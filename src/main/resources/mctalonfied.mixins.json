@@ -18,7 +18,8 @@
     "FPSLimitMixin",
     "gui.InGameHUDMixin",
     "gui.MainMenuScreenMixin",
-    "player.SufficateOverlayMixin"
+    "player.SufficateOverlayMixin",
+    "render.BlockRendererMixin"
   ],
   "injectors": {
     "defaultRequire": 1

@@ -6,9 +6,11 @@ import org.spongepowered.asm.mixin.Mixin;
 
 @Mixin(OverworldDimension.class)
 public class WorldHeightChangeMixin implements StationDimension {
+
+
     @Override
     public int getHeight() {
-        return 512;
+        return 256;
     }
 
     @Override
