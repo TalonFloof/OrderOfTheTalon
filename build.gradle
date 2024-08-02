@@ -69,25 +69,30 @@ repositories {
 dependencies {
 	// To change the versions see the gradle.properties file
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
-	mappings "net.glasslauncher:biny:${project.yarn_mappings}:v2"
+	mappings "com.github.paulevsGitch:BIN-Mappings-BH:${project.mappings}"
 	modImplementation "babric:fabric-loader:${project.loader_version}"
 
 	implementation "org.slf4j:slf4j-api:1.8.0-beta4"
 	implementation 'org.apache.logging.log4j:log4j-slf4j18-impl:2.17.2'
 	implementation "blue.endless:jankson:1.2.1"
 
-	modImplementation "net.modificationstation:StationAPI:${project.stapi_version}"
+	modImplementation include("net.modificationstation:StationAPI:${project.stapi_version}")
 
 	// Optional, but convenient mods for mod creators and users alike.
 	modImplementation("com.github.calmilamsy:ModMenu:${project.modmenu_version}") {
 		transitive false
 	}
-	modImplementation("net.glasslauncher.mods:GlassConfigAPI:${project.gcapi_version}") {
+	modImplementation include("net.glasslauncher.mods:GlassConfigAPI:${project.gcapi_version}")  {
 		transitive false
 	}
 	modImplementation("net.glasslauncher:HowManyItems-Fabric-Unofficial:${project.howmanyitems_version}") {
 		transitive false
 	}
+
+	modImplementation "maven.modrinth:spasm:0.2.2"
+	modImplementation include("maven.modrinth:spc-babric:0.4.5")
+
+	//modImplementation include("maven.modrinth:ears:1.4.5+fabric-b1.7.3")
 }
 
 processResources {

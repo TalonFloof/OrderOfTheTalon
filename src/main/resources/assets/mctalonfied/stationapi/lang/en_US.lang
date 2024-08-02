@@ -1,0 +1,4 @@
+# @ is a shorthand for the current mod id, which is examplemod.
+
+key.@.noClip=No Clip
+key.@.sprint=Sprint
