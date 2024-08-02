@@ -23,7 +23,8 @@
       "sh.talonfloof.mctalonfied.events.init.BlockListener",
       "sh.talonfloof.mctalonfied.events.init.ItemListener",
       "sh.talonfloof.mctalonfied.events.init.PlayerHandlerListener",
-      "sh.talonfloof.mctalonfied.events.init.RecipeListener"
+      "sh.talonfloof.mctalonfied.events.init.RecipeListener",
+      "sh.talonfloof.mctalonfied.events.init.BiomeListener"
     ],
     "stationapi:event_bus_client": [
       "sh.talonfloof.mctalonfied.events.init.KeyBindingListener",

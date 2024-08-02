@@ -31,7 +31,7 @@ public class BlockRendererMixin {
             initialized = true;
         }
         if(b.id == Block.GRASS.id) {
-            if(Math.abs(grassShowNoise.GetNoise((float)x*16,(float)z*16)) > 0.5F) {
+            if(Math.abs(grassShowNoise.GetNoise((float)x*16,(float)z*16)) > 0.25F) {
                 ((BlockRenderer) (Object) this).renderCross(Block.TALL_GRASS, 1, x, y + Math.abs(grassHeightNoise.GetNoise((float)x,(float)z))*0.6, z);
             }
         }

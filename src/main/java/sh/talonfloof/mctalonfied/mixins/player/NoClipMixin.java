@@ -17,7 +17,7 @@ import sh.talonfloof.mctalonfied.mixins.accessors.LivingEntityAccessor;
 
 @Mixin(PlayerEntity.class)
 public abstract class NoClipMixin extends LivingEntity implements IExtendedPlayer {
-    @Unique private final Vec3D talon_flightSpeed = Vec3D.make(0, 0, 0);
+    @Unique private Vec3D talon_flightSpeed = Vec3D.make(0, 0, 0);
     @Unique
     public boolean talon$shouldNoClip = false;
 
@@ -76,6 +76,7 @@ public abstract class NoClipMixin extends LivingEntity implements IExtendedPlaye
     @Override
     public void talon$setNoClip(boolean value) {
         talon$shouldNoClip = value;
+        talon_flightSpeed = Vec3D.make(0,0,0);
     }
 
     @Unique

@@ -9,8 +9,12 @@
     "WorldHeightChangeMixin",
     "accessors.LivingEntityAccessor",
     "entity.ItemEntityMixin",
+    "entity.MonsterSpawnerMixin",
+    "gen.OverworldBiomeProviderMixin",
+    "gen.OverworldCaveGenerationFixMixin",
     "gen.OverworldGenerationMixin",
-    "player.NoClipMixin"
+    "player.NoClipMixin",
+    "render.GrassBlockMixin"
   ],
   "server": [
   ],

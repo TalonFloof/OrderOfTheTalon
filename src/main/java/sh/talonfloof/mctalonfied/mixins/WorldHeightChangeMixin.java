@@ -15,6 +15,6 @@ public class WorldHeightChangeMixin implements StationDimension {
 
     @Override
     public int getBottomY() {
-        return 0;
+        return -64;
     }
 }
