@@ -86,6 +86,9 @@ dependencies {
 	modImplementation include("maven.modrinth:spc-babric:0.4.5")
 
 	//modImplementation include("maven.modrinth:ears:1.4.5+fabric-b1.7.3")
+
+	modImplementation include("maven.modrinth:mojangfix-stationapi-edition:2.0.1")
+	include(implementation("com.github.GeyserMC:MCAuthLib:d9d773e5d50327c33898c65cd545a4f6ef3ba1b5"))
 }
 
 processResources {

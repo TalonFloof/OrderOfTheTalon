@@ -1,45 +1,45 @@
 {
   "schemaVersion": 1,
-  "id": "mctalonfied",
+  "id": "talon",
   "version": "${version}",
 
-  "name": "MCTalonfied",
-  "description": "This is an example description! Tell everyone what your mod is about!",
+  "name": "Order of the Talon",
+  "description": "Total Revamp mod for Beta 1.7.3",
   "authors": [
-    "Me!"
+    "TalonFloof"
   ],
   "contact": {
     "homepage": "https://glass-launcher.net/",
     "sources": "https://github.com/calmilamsy/stationapi-example-mod"
   },
 
-  "license": "CC0-1.0",
-  "icon": "assets/mctalonfied/icon.png",
+  "license": "All Rights Reserved",
+  "icon": "assets/talon/icon.png",
 
   "environment": "*",
   "entrypoints": {
     "stationapi:event_bus": [
-      "sh.talonfloof.mctalonfied.events.init.AchievementListener",
-      "sh.talonfloof.mctalonfied.events.init.BlockListener",
-      "sh.talonfloof.mctalonfied.events.init.ItemListener",
-      "sh.talonfloof.mctalonfied.events.init.PlayerHandlerListener",
-      "sh.talonfloof.mctalonfied.events.init.RecipeListener",
-      "sh.talonfloof.mctalonfied.events.init.BiomeListener"
+      "sh.talonfloof.orderofthetalon.events.init.AchievementListener",
+      "sh.talonfloof.orderofthetalon.events.init.BlockListener",
+      "sh.talonfloof.orderofthetalon.events.init.ItemListener",
+      "sh.talonfloof.orderofthetalon.events.init.PlayerHandlerListener",
+      "sh.talonfloof.orderofthetalon.events.init.RecipeListener",
+      "sh.talonfloof.orderofthetalon.events.init.BiomeListener"
     ],
     "stationapi:event_bus_client": [
-      "sh.talonfloof.mctalonfied.events.init.KeyBindingListener",
-      "sh.talonfloof.mctalonfied.events.init.TextureListener",
-      "sh.talonfloof.mctalonfied.events.ingame.KeyPressedListener"
+      "sh.talonfloof.orderofthetalon.events.init.KeyBindingListener",
+      "sh.talonfloof.orderofthetalon.events.init.TextureListener",
+      "sh.talonfloof.orderofthetalon.events.ingame.KeyPressedListener"
     ],
     "stationapi:event_bus_server": [
-      "sh.talonfloof.mctalonfied.events.init.ServerInitListener"
+      "sh.talonfloof.orderofthetalon.events.init.ServerInitListener"
     ],
     "spasm:transformer": [
-      "sh.talonfloof.mctalonfied.asm.MaxStackCountTransformer"
+      "sh.talonfloof.orderofthetalon.asm.MaxStackCountTransformer"
     ]
   },
   "mixins": [
-    "mctalonfied.mixins.json"
+    "talon.mixins.json"
   ],
 
   "depends": {
