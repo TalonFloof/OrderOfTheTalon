@@ -1,6 +1,22 @@
 package sh.talonfloof.orderofthetalon.util;
 
 public class AdvMathUtil {
+    public static void nearestNeighbor3DPoints(DoubleArray3D src, DoubleArray3D dst) {
+        double xRatio = ((double)src.width) / ((double)dst.width);
+        double yRatio = ((double)src.height) / ((double)dst.height);
+        double zRatio = ((double)src.length) / ((double)dst.length);
+        for(int i=0; i < dst.length; i++) {
+            for (int j = 0; j < dst.width; j++) {
+                for (int k = 0; k < dst.height; k++) {
+                    int finalX = (int)Math.floor(j*xRatio);
+                    int finalY = (int)Math.floor(k*yRatio);
+                    int finalZ = (int)Math.floor(i*zRatio);
+                    dst.set(j,k,i,src.get(finalX,finalY,finalZ));
+                }
+            }
+        }
+    }
+
     public static void lerp3DPoints(DoubleArray3D src, DoubleArray3D dst, int rh, int rv) {
         double[] srcArr = src.getArray();
         int sw = src.width;

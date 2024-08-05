@@ -10,6 +10,7 @@ import net.minecraft.level.source.OverworldLevelSource;
 import net.minecraft.util.noise.PerlinOctaveNoise;
 import net.modificationstation.stationapi.api.util.math.MathHelper;
 import net.modificationstation.stationapi.impl.world.chunk.FlattenedChunk;
+import org.objectweb.asm.Opcodes;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
@@ -41,6 +42,8 @@ public class OverworldGenerationMixin {
     private Random rand;
     @Shadow private Cave cave;
     @Unique
+    public FastNoiseLite stoneTypeFractals;
+    @Unique
     public FastNoiseLite caveSurfaceFractals;
     @Unique
     public FastNoiseLite caveNoodleNoise;
@@ -61,6 +64,12 @@ public class OverworldGenerationMixin {
         caveSurfaceFractals.SetCellularReturnType(FastNoiseLite.CellularReturnType.CellValue);
         caveSurfaceFractals.SetCellularDistanceFunction(FastNoiseLite.CellularDistanceFunction.Hybrid);
         caveSurfaceFractals.SetFrequency(0.01F);
+
+        stoneTypeFractals = new FastNoiseLite(rand.nextInt());
+        stoneTypeFractals.SetNoiseType(FastNoiseLite.NoiseType.Cellular);
+        stoneTypeFractals.SetCellularReturnType(FastNoiseLite.CellularReturnType.CellValue);
+        stoneTypeFractals.SetCellularDistanceFunction(FastNoiseLite.CellularDistanceFunction.Hybrid);
+        stoneTypeFractals.SetFrequency(0.01F);
     }
 
     @Inject(method = "getChunk", at = @At(value = "INVOKE", target = "Lnet/minecraft/level/Level;getBiomeSource()Lnet/minecraft/level/biome/BiomeSource;"), locals = LocalCapture.CAPTURE_FAILHARD)
@@ -70,6 +79,18 @@ public class OverworldGenerationMixin {
 
     @Inject(method = "buildSurface", at = @At("HEAD"), cancellable = true)
     public void talon$buildSurfaceFix(int chunkX, int chunkZ, byte[] blocks, Biome[] biomes, CallbackInfo ci) {
+        /*DoubleArray3D stoneTypeBase = new DoubleArray3D(2,16,2);
+        for(int x=0; x < stoneTypeBase.width; x++) {
+            for(int z =0; z < stoneTypeBase.length; z++) {
+                float noiseX = (chunkX << 4) + (x*8);
+                float noiseZ = (chunkZ << 4) + (z*8);
+                for (int y = 0; y < stoneTypeBase.height; y++) {
+                    stoneTypeBase.set(x,y,z,((stoneTypeFractals.GetNoise(noiseX, y*16, noiseZ) + 1F) / 2F));
+                }
+            }
+        }
+        DoubleArray3D stoneTypeInterp = new DoubleArray3D(16,256,16);
+        AdvMathUtil.nearestNeighbor3DPoints(stoneTypeBase,stoneTypeInterp);*/
         int var5 = 128;
         double var6 = 0.03125;
         this.sandNoises = this.beachNoise.sample(this.sandNoises, (double)(chunkX * 16), (double)(chunkZ * 16), 0.0, 16, 16, 1, var6, var6, 1.0);

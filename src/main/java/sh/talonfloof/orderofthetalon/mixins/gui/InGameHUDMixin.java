@@ -29,7 +29,7 @@ public class InGameHUDMixin {
         TextRenderer tr = minecraft.textRenderer;
         HitResult hit = minecraft.hitResult;
         if (hit != null && hit.type == HitType.BLOCK) {
-            ((InGame)(Object)this).drawTextWithShadow(tr,"Looking at ("+hit.x+", "+hit.y+", "+hit.z+")",0,88+16,14737632);
+            ((InGame)(Object)this).drawTextWithShadow(tr,"Looking at ("+hit.x+", "+hit.y+", "+hit.z+")",2,88+8,14737632);
         }
     }
 }

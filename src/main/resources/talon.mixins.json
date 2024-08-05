@@ -10,6 +10,7 @@
     "accessors.LivingEntityAccessor",
     "entity.ItemEntityMixin",
     "entity.MonsterSpawnerMixin",
+    "gameplay.LeavesBlockMixin",
     "gen.BiomeMixin",
     "gen.OverworldBiomeProviderMixin",
     "gen.OverworldCaveGenerationFixMixin",

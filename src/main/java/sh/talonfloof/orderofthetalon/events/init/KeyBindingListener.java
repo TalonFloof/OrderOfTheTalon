@@ -14,7 +14,7 @@ public class KeyBindingListener {
     @EventListener
     public void registerKeyBindings(KeyBindingRegisterEvent event) {
         List<KeyBinding> list = event.keyBindings;
-        list.add(sprintBind = new KeyBinding("key.mctalonfied.sprint", Keyboard.KEY_LCONTROL));
-        list.add(noClipBind = new KeyBinding("key.mctalonfied.noclip", Keyboard.KEY_G));
+        list.add(sprintBind = new KeyBinding("key.talon.sprint", Keyboard.KEY_LCONTROL));
+        list.add(noClipBind = new KeyBinding("key.talon.noClip", Keyboard.KEY_G));
     }
 }

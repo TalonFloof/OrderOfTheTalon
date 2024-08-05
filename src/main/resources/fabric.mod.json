@@ -35,7 +35,8 @@
       "sh.talonfloof.orderofthetalon.events.init.ServerInitListener"
     ],
     "spasm:transformer": [
-      "sh.talonfloof.orderofthetalon.asm.MaxStackCountTransformer"
+      "sh.talonfloof.orderofthetalon.asm.MaxStackCountTransformer",
+      "sh.talonfloof.orderofthetalon.asm.MojangFixCompatTransformer"
     ]
   },
   "mixins": [

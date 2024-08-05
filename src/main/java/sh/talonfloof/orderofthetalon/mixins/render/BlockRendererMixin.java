@@ -4,6 +4,7 @@ import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.block.Block;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.render.block.BlockRenderer;
+import net.modificationstation.stationapi.api.util.math.MathHelper;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -32,7 +33,8 @@ public class BlockRendererMixin {
         }
         if(b.id == Block.GRASS.id && ((Minecraft) FabricLoader.getInstance().getGameInstance()).options.fancyGraphics) {
             if(Math.abs(grassShowNoise.GetNoise((float)x*16,(float)z*16)) > 0.25F) {
-                ((BlockRenderer) (Object) this).renderCross(Block.TALL_GRASS, 1, x, y + Math.abs(grassHeightNoise.GetNoise((float)x,(float)z))*0.6, z);
+                double val = Math.abs(grassHeightNoise.GetNoise((float)x,(float)z));
+                ((BlockRenderer) (Object) this).renderCross(Block.TALL_GRASS, 1, x, y + MathHelper.lerp(val,0.15,0.8), z);
             }
         }
     }
