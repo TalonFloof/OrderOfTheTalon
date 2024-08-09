@@ -1,0 +1,1 @@
+Assets used here are created by C418, this is under fair use as Minecraft Order of the Talon is a non-profit, free and open source Minecraft mod. C418 is the original creator of all music assets found within here. I take no ownership of them.
