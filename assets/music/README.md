@@ -6,3 +6,4 @@ ATTRIBUTION
 - intro.ogg : Intro by C418 (Minecraft - Volume Beta) -- https://c418.bandcamp.com/track/intro
 - equinoxe.ogg : Equinoxe by C418 (Minecraft - Volume Alpha) -- https://c418.bandcamp.com/track/equinoxe
 - ki.ogg : Ki by C418 (Minecraft - Volume Beta) -- https://c418.bandcamp.com/track/ki
+- door.ogg : Door by C418 (Minecraft - Volume Alpha) -- https://c418.bandcamp.com/track/door
