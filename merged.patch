@@ -4249,6 +4249,67 @@
  	}
  
  	public boolean canSleep() {
+--- net/minecraft/client/sound/SoundManager.java
++++ net/minecraft/client/sound/SoundManager.java
+@@ -3,6 +3,7 @@
+ import java.io.File;
+ import java.util.Random;
+ import net.minecraft.client.GameSettings;
++import net.minecraft.client.ThreadDownloadResources;
+ import net.minecraft.game.entity.LivingEntity;
+ import net.minecraft.util.MathHelper;
+ import paulscode.sound.SoundSystem;
+@@ -12,10 +13,11 @@
+ import paulscode.sound.libraries.LibraryLWJGLOpenAL;
+ 
+ public class SoundManager {
+-	private static SoundSystem sndSystem;
++	public static SoundSystem sndSystem;
+ 	private SoundPool soundPoolSounds = new SoundPool();
+ 	private SoundPool soundPoolStreaming = new SoundPool();
+ 	private SoundPool soundPoolMusic = new SoundPool();
++	public SoundPool soundPoolTitleMusic = new SoundPool();
+ 	private int field_587_e = 0;
+ 	private GameSettings options;
+ 	private static boolean loaded = false;
+@@ -62,8 +64,10 @@
+ 		if(loaded) {
+ 			if(this.options.musicVolume == 0.0F) {
+ 				sndSystem.stop("BgMusic");
++				sndSystem.stop("TitleMusic");
+ 			} else {
+ 				sndSystem.setVolume("BgMusic", this.options.musicVolume);
++				sndSystem.setVolume("TitleMusic", this.options.musicVolume);
+ 			}
+ 		}
+ 
+@@ -106,6 +110,26 @@
+ 			}
+ 
+ 		}
++	}
++
++	public boolean playMenuMusic() {
++		if(loaded && ThreadDownloadResources.titleMusicReady && this.options.musicVolume != 0.0F) {
++			if(sndSystem.playing("BgMusic")) {
++				sndSystem.stop("BgMusic");
++			}
++			if(!sndSystem.playing("TitleMusic")) {
++				SoundPoolEntry var1 = this.soundPoolTitleMusic.getRandomSound();
++				if (var1 != null) {
++					sndSystem.backgroundMusic("TitleMusic", var1.soundUrl, var1.soundName, false);
++					sndSystem.setVolume("TitleMusic", this.options.musicVolume);
++					sndSystem.play("TitleMusic");
++					return true;
++				} else {
++					return false;
++				}
++			}
++		}
++		return false;
+ 	}
+ 
+ 	public void func_338_a(LivingEntity var1, float var2) {
 --- net/minecraft/game/world/biome/Biome.java
 +++ net/minecraft/game/world/biome/Biome.java
 @@ -16,30 +16,56 @@
@@ -9640,7 +9701,32 @@
  
 --- net/minecraft/client/ThreadDownloadResources.java
 +++ net/minecraft/client/ThreadDownloadResources.java
-@@ -30,7 +30,7 @@
+@@ -1,11 +1,11 @@
+ package net.minecraft.client;
+ 
+-import java.io.DataInputStream;
+-import java.io.DataOutputStream;
+-import java.io.File;
+-import java.io.FileOutputStream;
+-import java.io.IOException;
++import java.io.*;
+ import java.net.URL;
++import java.nio.file.Files;
++import java.nio.file.Paths;
++import java.nio.file.StandardCopyOption;
++import javax.swing.*;
+ import javax.xml.parsers.DocumentBuilder;
+ import javax.xml.parsers.DocumentBuilderFactory;
+ import org.w3c.dom.Document;
+@@ -17,6 +17,7 @@
+ 	public File resourcesFolder;
+ 	private Minecraft mc;
+ 	private boolean closing = false;
++	public static boolean titleMusicReady = false;
+ 
+ 	public ThreadDownloadResources(File var1, Minecraft var2) {
+ 		this.mc = var2;
+@@ -30,7 +31,7 @@
  
  	public void run() {
  		try {
@@ -9649,6 +9735,62 @@
  			DocumentBuilderFactory var2 = DocumentBuilderFactory.newInstance();
  			DocumentBuilder var3 = var2.newDocumentBuilder();
  			Document var4 = var3.parse(var1.openStream());
+@@ -52,6 +53,11 @@
+ 					}
+ 				}
+ 			}
++
++			downloadAndInstallResourceTalon(new URL("https://raw.githubusercontent.com/TalonFloof/OrderOfTheTalon/main/assets/music/intro.ogg"),"talon_title/intro.ogg",3724582,2);
++			downloadAndInstallResourceTalon(new URL("https://raw.githubusercontent.com/TalonFloof/OrderOfTheTalon/main/assets/music/equinoxe.ogg"),"talon_title/equinoxe.ogg",1506686,2);
++			downloadAndInstallResourceTalon(new URL("https://raw.githubusercontent.com/TalonFloof/OrderOfTheTalon/main/assets/music/ki.ogg"),"talon_title/ki.ogg",1185541,2);
++			titleMusicReady = true;
+ 		} catch (Exception var13) {
+ 			this.loadResource(this.resourcesFolder, "");
+ 			var13.printStackTrace();
+@@ -85,7 +91,7 @@
+ 			int var6 = var2.indexOf("/");
+ 			String var7 = var2.substring(0, var6);
+ 			if(!var7.equals("sound") && !var7.equals("newsound")) {
+-				if(var5 != 1) {
++				if(var5 != 1 && var5 != 2) {
+ 					return;
+ 				}
+ 			} else if(var5 != 0) {
+@@ -97,6 +103,34 @@
+ 				var8.getParentFile().mkdirs();
+ 				String var9 = var2.replaceAll(" ", "%20");
+ 				this.downloadResource(new URL(var1, var9), var8, var3);
++				if(this.closing) {
++					return;
++				}
++			}
++
++			this.mc.installResource(var2, var8);
++		} catch (Exception var10) {
++			var10.printStackTrace();
++		}
++
++	}
++
++	private void downloadAndInstallResourceTalon(URL var1, String var2, long var3, int var5) {
++		try {
++			int var6 = var2.indexOf("/");
++			String var7 = var2.substring(0, var6);
++			if(!var7.equals("sound") && !var7.equals("newsound")) {
++				if(var5 != 1 && var5 != 2) {
++					return;
++				}
++			} else if(var5 != 0) {
++				return;
++			}
++
++			File var8 = new File(this.resourcesFolder, var2);
++			if(!var8.exists() || var8.length() != var3) {
++				var8.getParentFile().mkdirs();
++				this.downloadResource(var1, var8, var3);
+ 				if(this.closing) {
+ 					return;
+ 				}
 --- com/mojang/nbt/CompoundTag.java
 +++ com/mojang/nbt/CompoundTag.java
 @@ -79,6 +79,14 @@
@@ -9764,7 +9906,7 @@
 +}
 --- net/minecraft/client/gui/MainMenuScreen.java
 +++ net/minecraft/client/gui/MainMenuScreen.java
-@@ -10,12 +10,13 @@
+@@ -10,14 +10,16 @@
  import net.minecraft.client.gui.component.GuiButton;
  import net.minecraft.client.render.Tessellator;
  import net.minecraft.util.MathHelper;
@@ -9778,12 +9920,16 @@
 +	public float updateCounter = 0.0F;
  	private String splashText = "missingno";
  	private GuiButton multiplayerButton;
++	private static boolean musicInit = false;
  
-@@ -39,11 +40,11 @@
+ 	public MainMenuScreen() {
+ 		try {
+@@ -39,11 +41,12 @@
  			}
  		} catch (Exception var4) {
  		}
 -
++		musicInit = true;
  	}
  
  	public void updateScreen() {
@@ -9792,7 +9938,7 @@
  	}
  
  	protected void keyTyped(char var1, int var2) {
-@@ -52,12 +53,14 @@
+@@ -52,12 +55,14 @@
  	public void initGui() {
  		Calendar var1 = Calendar.getInstance();
  		var1.setTime(new Date());
@@ -9809,16 +9955,43 @@
  		} else if(var1.get(2) + 1 == 1 && var1.get(5) == 1) {
  			this.splashText = "Happy new year!";
  		}
-@@ -104,7 +107,7 @@
+@@ -67,12 +72,12 @@
+ 		this.controlList.add(new GuiButton(1, this.width / 2 - 100, var4, var2.translateKey("menu.singleplayer")));
+ 		this.controlList.add(this.multiplayerButton = new GuiButton(2, this.width / 2 - 100, var4 + 24, var2.translateKey("menu.multiplayer")));
+ 		this.controlList.add(new GuiButton(3, this.width / 2 - 100, var4 + 48, var2.translateKey("menu.mods")));
+-		if(this.mc.hideQuitButton) {
++		/*if(this.mc.hideQuitButton) {
+ 			this.controlList.add(new GuiButton(0, this.width / 2 - 100, var4 + 72, var2.translateKey("menu.options")));
+-		} else {
++		} else {*/
+ 			this.controlList.add(new GuiButton(0, this.width / 2 - 100, var4 + 72 + 12, 98, 20, var2.translateKey("menu.options")));
+ 			this.controlList.add(new GuiButton(4, this.width / 2 + 2, var4 + 72 + 12, 98, 20, var2.translateKey("menu.quit")));
+-		}
++		//}
+ 
+ 		if(this.mc.session == null) {
+ 			this.multiplayerButton.enabled = false;
+@@ -104,15 +109,16 @@
  	}
  
  	public void drawScreen(int var1, int var2, float var3) {
 -		this.drawDefaultBackground();
++		this.mc.sndManager.playMenuMusic();
 +		this.drawDefaultBackground(var3);
  		Tessellator var4 = Tessellator.instance;
  		short var5 = 274;
  		int var6 = this.width / 2 - var5 / 2;
-@@ -122,7 +125,7 @@
+ 		byte var7 = 30;
+ 		GL11.glBindTexture(GL11.GL_TEXTURE_2D, this.mc.textureRegistry.getTexture("/title/mclogo.png"));
+ 		GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
+-		this.drawTexturedRect(var6 + 0, var7 + 0, 0, 0, 155, 44);
+-		this.drawTexturedRect(var6 + 155, var7 + 0, 0, 45, 155, 44);
++		this.drawTexturedRect(var6 + 0, var7 + 0, 0, 0, 155, 51);
++		this.drawTexturedRect(var6 + 154, var7 + 0, 0, 55, 155, 51);
+ 		var4.setColorOpaque_I(16777215);
+ 		GL11.glPushMatrix();
+ 		GL11.glTranslatef((float)(this.width / 2 + 90), 70.0F, 0.0F);
+@@ -122,7 +128,7 @@
  		GL11.glScalef(var8, var8, var8);
  		this.drawCenteredString(this.fontRenderer, this.splashText, 0, -8, 16776960);
  		GL11.glPopMatrix();
@@ -10278,16 +10451,17 @@
  import org.lwjgl.LWJGLException;
  import org.lwjgl.input.Controllers;
  import org.lwjgl.input.Keyboard;
-@@ -85,6 +92,8 @@
+@@ -85,6 +92,9 @@
  import org.lwjgl.opengl.GL11;
  import org.lwjgl.util.glu.GLU;
  
 +import javax.imageio.ImageIO;
++import javax.swing.*;
 +
  public abstract class Minecraft implements Runnable {
  	public static byte[] field_28006_b = new byte[10485760];
  	private static Minecraft theMinecraft;
-@@ -167,6 +176,13 @@
+@@ -167,6 +177,13 @@
  	public void onMinecraftCrash(UnexpectedThrowable var1) {
  		this.hasCrashed = true;
  		this.displayUnexpectedThrowable(var1);
@@ -10301,7 +10475,7 @@
  	}
  
  	public abstract void displayUnexpectedThrowable(UnexpectedThrowable var1);
-@@ -201,7 +217,9 @@
+@@ -201,7 +218,9 @@
  			Display.setDisplayMode(new DisplayMode(this.displayWidth, this.displayHeight));
  		}
  
@@ -10312,7 +10486,7 @@
  
  		try {
  			Display.create();
-@@ -529,7 +547,7 @@
+@@ -529,7 +548,7 @@
  					}
  
  					if(this.thePlayer != null && this.thePlayer.isEntityInsideOpaqueBlock()) {
@@ -10321,7 +10495,7 @@
  					}
  
  					if(!this.skipRenderWorld) {
-@@ -640,6 +658,10 @@
+@@ -640,6 +659,10 @@
  	}
  
  	private void displayDebugInfo(long var1) {
@@ -10332,7 +10506,7 @@
  		long var3 = 16666666L;
  		if(this.prevFrameTime == -1L) {
  			this.prevFrameTime = System.nanoTime();
-@@ -737,7 +759,8 @@
+@@ -737,7 +760,8 @@
  			}
  
  			this.inGameHasFocus = false;
@@ -10342,7 +10516,7 @@
  		}
  	}
  
-@@ -1021,7 +1044,7 @@
+@@ -1021,7 +1045,7 @@
  												}
  
  												if(Keyboard.getEventKey() == Keyboard.KEY_F5) {
@@ -10351,7 +10525,7 @@
  												}
  
  												if(Keyboard.getEventKey() == Keyboard.KEY_F8) {
-@@ -1036,7 +1059,17 @@
+@@ -1036,7 +1060,17 @@
  													this.thePlayer.dropCurrentItem();
  												}
  
@@ -10370,7 +10544,7 @@
  													this.displayGuiScreen(new ChatScreen());
  												}
  											}
-@@ -1044,6 +1077,11 @@
+@@ -1044,6 +1078,11 @@
  											for(int var6 = 0; var6 < 9; ++var6) {
  												if(Keyboard.getEventKey() == Keyboard.KEY_1 + var6) {
  													this.thePlayer.inventory.currentItem = var6;
@@ -10382,7 +10556,26 @@
  												}
  											}
  
-@@ -1450,15 +1488,17 @@
+@@ -1236,6 +1275,7 @@
+ 	}
+ 
+ 	public void changeWorld(World var1, String var2, PlayerEntity var3) {
++		SoundManager.sndSystem.stop("TitleMusic");
+ 		this.statFileWriter.func_27175_b();
+ 		this.statFileWriter.syncStats();
+ 		this.renderViewEntity = null;
+@@ -1361,8 +1401,9 @@
+ 			this.sndManager.addMusic(var1, var2);
+ 		} else if(var4.equalsIgnoreCase("newmusic")) {
+ 			this.sndManager.addMusic(var1, var2);
++		} else if(var4.equalsIgnoreCase("talon_title")) {
++			this.sndManager.soundPoolTitleMusic.addSound(var1, var2);
+ 		}
+-
+ 	}
+ 
+ 	public OpenGlCapsChecker getOpenGlCapsChecker() {
+@@ -1450,15 +1491,17 @@
  	}
  
  	public static void startMainThread(String var0, String var1, String var2) {
@@ -10402,7 +10595,7 @@
  		Thread var8 = new Thread(var7, "Minecraft main thread");
  		var8.setPriority(10);
  		var7.minecraftUri = "www.minecraft.net";
-@@ -1516,8 +1556,40 @@
+@@ -1516,8 +1559,40 @@
  
  	public boolean lineIsCommand(String var1) {
  		if(var1.startsWith("/")) {
