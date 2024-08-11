@@ -1,0 +1,96 @@
+§8-------------------------§r
+§dMinecraft§r
+§dOrder Of the Talon§r
+§d%version%§r
+§8-------------------------§r
+
+§dORDER OF THE TALON§r
+§bTalonFloof:§r Lead Developer
+
+§dTHIRD PARTY§r
+§cFastNoiseLite§r by §bAuburn§r
+Parts of §cMojangFix§r by §bjs6pak§r
+Parts of §cUniTweaks§r by §bDanyGames2014§r
+Parts of §cMC Diverge§r's technical code by §bBlueStaggo§r
+
+§dMUSIC ATTRIBUTION§r
+intro.ogg : Intro by C418 (Minecraft - Volume Beta)
+§ehttps://c418.bandcamp.com/track/intro§r
+equinoxe.ogg : Equinoxe by C418 (Minecraft - Volume Alpha)
+§ehttps://c418.bandcamp.com/track/equinoxe§r
+ki.ogg : Ki by C418 (Minecraft - Volume Beta)
+§ehttps://c418.bandcamp.com/track/ki§r
+door.ogg : Door by C418 (Minecraft - Volume Alpha)
+§ehttps://c418.bandcamp.com/track/door§r
+
+§dSPECIAL THANKS§r
+§bBlueStaggo§r for creating Diverge
+a huge inspiration for this
+and for helping with some technical stuff.
+§bBTA Team§r for creating an amazing
+mod that inspried some features
+of OOOT.
+§bFlowerChild§r for creating
+Better than Wolves, its mechanics inspiring
+some ideas in OOOT.
+§bModification Station§r for
+their continued support of this mod.
+§bRetroMCP Team§r for creating the tools
+to mod old versions of Minecraft. This
+wouldn't be possible without them.
+§bDragonly44§r for guiding me through my journey
+with art. They have pushed me farther than I thought
+I could ever go.
+§bNigel Raj§r for being an amazing partner
+who has stayed by my side in my darkest days
+
+§bYOU§r for playing this ^w^
+
+
+
+
+
+
+
+
+
+Copyright (c) 2024 TalonFloof
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+THIS IS NOT AN OFFICIAL MODIFICATION AND IS
+NOT APPROVED BY OR ASSOCIATED WITH MOJANG OR MICROSOFT
+
+
+
+
+
+
+
+
+
+No matter who you and or what you do, do it
+Explore, create, make the most of your life.
+Because before you know it, everything will be gone
+
+Let your heart as a compass to guide you through life
+And don't let anyone hold you back
+
+- Talon Kettuso
