@@ -364,6 +364,130 @@
 +		var1.addRecipe(new ItemStack(Item.shears), new Object[]{" #", "# ", Character.valueOf('#'), Item.ironIngot});*/
  	}
  }
+--- /dev/null
++++ net/minecraft/game/world/block/mechanical/GearboxBlock.java
+@@ -1,0 +1,121 @@
++package net.minecraft.game.world.block.mechanical;
++
++import net.minecraft.game.item.Item;
++import net.minecraft.game.item.ItemStack;
++import net.minecraft.game.world.BlockPos;
++import net.minecraft.game.world.World;
++import net.minecraft.game.world.block.Block;
++import net.minecraft.game.world.block.Direction;
++import net.minecraft.game.world.material.Material;
++
++import java.util.Random;
++
++import static net.minecraft.util.SharedConstants.getAtlasTexture;
++
++public class GearboxBlock extends Block {
++    public GearboxBlock(int var1) {
++        super(var1, Material.wood);
++        this.setTickOnLoad(true);
++    }
++
++    @Override
++    public int getBlockTextureFromSideAndMetadata(int var1, int var2) {
++        if(var1 == var2) {
++            return getAtlasTexture(26,7);
++        }
++        return getAtlasTexture(16,0);
++    }
++
++    public static BlockPos addFacingAsOffset(BlockPos pos, int iFacing)
++    {
++        switch (iFacing) {
++            case 0: {
++                return new BlockPos(pos.x, pos.y - 1, pos.z);
++            }
++            case 1: {
++                return new BlockPos(pos.x,pos.y+1,pos.z);
++            }
++            case 2: {
++                return new BlockPos(pos.x,pos.y,pos.z-1);
++            }
++            case 3: {
++                return new BlockPos(pos.x,pos.y,pos.z+1);
++            }
++            case 4: {
++                return new BlockPos(pos.x-1,pos.y,pos.z);
++            }
++            default: {
++                return new BlockPos(pos.x+1,pos.y,pos.z);
++            }
++        }
++    }
++
++    public void onNeighborBlockChange(World world, int i, int j, int k, int iid) {
++        world.scheduleUpdateTick(i, j, k, Block.gearbox.blockID, tickRate());
++    }
++
++    @Override
++    public void updateTick(World world, int i, int j, int k, Random random) {
++        super.updateTick(world, i, j, k, random);
++        boolean powered = isGettingMechanicalPower(world,i,j,k);
++        if(powered) {
++            world.playSoundEffect((double) i + 0.5D, (double) j + 0.5D, (double) k + 0.5D, "random.explode", 0.05F, 1.0F);
++        }
++        int iFacing = world.getBlockMetadata(i, j, k) & 7;
++        for(int f=0; f < 6; f++) {
++            if(f == iFacing)
++                continue;
++            BlockPos target = addFacingAsOffset(new BlockPos(i, j, k),f);
++            if(world.getBlockId(target.x, target.y, target.z) != Block.axle.blockID)
++                continue;
++            AxleBlock axleBlock = (AxleBlock)Block.axle;
++            if(!axleBlock.isAxleTowardsFacing(world, target.x, target.y, target.z, f))
++                continue;
++            int power = axleBlock.getPowerLevel(world, target.x, target.y, target.z);
++            if(powered) {
++                if (power != 4)
++                    axleBlock.setPowerLevel(world, target.x, target.y, target.z, 4);
++                continue;
++            }
++            if(power != 0)
++                axleBlock.setPowerLevel(world, target.x, target.y, target.z, 0);
++        }
++    }
++
++    public boolean isGettingMechanicalPower(World world, int i, int j, int k)
++    {
++        int iFacing = world.getBlockMetadata(i, j, k) & 7;
++        BlockPos targetBlockPos = addFacingAsOffset(new BlockPos(i, j, k),iFacing);
++        int iTargetid = world.getBlockId(targetBlockPos.x, targetBlockPos.y, targetBlockPos.z);
++        return iTargetid == Block.axle.blockID && ((AxleBlock)Block.axle).isAxleTowardsFacing(world, targetBlockPos.x, targetBlockPos.y, targetBlockPos.z, iFacing) && ((AxleBlock)Block.axle).getPowerLevel(world, targetBlockPos.x, targetBlockPos.y, targetBlockPos.z) > 0;
++    }
++
++    public void onBlockPlaced(World var1, int var2, int var3, int var4, int var5) {
++        var1.setBlockMetadata(var2,var3,var4,var5);
++    }
++
++    public void onBlockAdded(World var1, int var2, int var3, int var4) {
++        var1.scheduleUpdateTick(var2, var3, var4, blockID, tickRate());
++    }
++
++    public void overpower(World w, int x, int y, int z) {
++        for(int iTemp = 0; iTemp < 8; iTemp++)
++        {
++            AxleBlock.ejectStackWithRandomOffset(w,x,y,z, new ItemStack(Block.planks,1,0));
++        }
++
++        for(int iTemp = 0; iTemp < 6; iTemp++)
++        {
++            AxleBlock.ejectStackWithRandomOffset(w,x,y,z, new ItemStack(Item.gear,1,0));
++        }
++
++        AxleBlock.ejectStackWithRandomOffset(w,x,y,z, new ItemStack(Item.redstone,1,0));
++        w.playSoundEffect((double)x + 0.5D, (double)y + 0.5D, (double)z + 0.5D, "random.explode", 0.2F, 1.25F);
++        w.setBlock(x, y, z, 0);
++    }
++
++    public int tickRate()
++    {
++        return 10;
++    }
++}
 --- net/minecraft/game/world/MetadataChunkBlock.java
 +++ net/minecraft/game/world/MetadataChunkBlock.java
 @@ -2,6 +2,7 @@
@@ -1067,6 +1191,74 @@
  			}
  
  			var16 = var10;
+--- net/minecraft/game/entity/EntityRegistry.java
++++ net/minecraft/game/entity/EntityRegistry.java
+@@ -9,6 +9,7 @@
+ import net.minecraft.game.entity.animal.SheepEntity;
+ import net.minecraft.game.entity.animal.SquidEntity;
+ import net.minecraft.game.entity.animal.WolfEntity;
++import net.minecraft.game.entity.mechanical.WindMillEntity;
+ import net.minecraft.game.entity.misc.FallingBlockEntity;
+ import net.minecraft.game.entity.misc.ItemEntity;
+ import net.minecraft.game.entity.misc.PaintingEntity;
+@@ -129,5 +130,7 @@
+ 		addMapping(FallingBlockEntity.class, "FallingSand", 21);
+ 		addMapping(MinecartEntity.class, "Minecart", 40);
+ 		addMapping(BoatEntity.class, "Boat", 41);
++
++		addMapping(WindMillEntity.class, "WindMill", 128);
+ 	}
+ }
+--- net/minecraft/game/item/AxeItem.java
++++ net/minecraft/game/item/AxeItem.java
+@@ -3,7 +3,7 @@
+ import net.minecraft.game.world.block.Block;
+ 
+ public class AxeItem extends ToolItem {
+-	private static Block[] blocksEffectiveAgainst = new Block[]{Block.planks, Block.bookshelf, Block.log, Block.chest};
++	private static Block[] blocksEffectiveAgainst = new Block[]{Block.planks, Block.bookshelf, Block.log, Block.chest, Block.workbench, Block.woodenStairs, Block.woodenPressurePlate, Block.door, Block.pumpkin, Block.jackOLantern, Block.jukebox, Block.standingSign, Block.wallSign, Block.fence, Block.trapdoor};
+ 
+ 	protected AxeItem(int var1, ToolMaterial var2) {
+ 		super(var1, 3, var2, blocksEffectiveAgainst);
+--- /dev/null
++++ net/minecraft/client/render/entity/mechanical/WindMillRenderer.java
+@@ -1,0 +1,36 @@
++package net.minecraft.client.render.entity.mechanical;
++
++import net.minecraft.client.model.mechanical.WindMillModel;
++import net.minecraft.client.render.entity.Render;
++import net.minecraft.game.entity.Entity;
++import net.minecraft.game.entity.mechanical.WindMillEntity;
++import org.lwjgl.opengl.GL11;
++
++public class WindMillRenderer extends Render {
++    protected WindMillModel modelWindMill;
++
++    public WindMillRenderer() {
++        modelWindMill = new WindMillModel();
++    }
++
++    @Override
++    public void doRender(Entity var1, double var2, double var4, double var6, float var8, float var9) {
++        WindMillEntity windmill = (WindMillEntity)var1;
++        GL11.glPushMatrix();
++        GL11.glTranslatef((float)var2, (float)var4, (float)var6);
++        loadTexture("/mob/windMill.png");
++        GL11.glScalef(1.0F, 1.0F, 1.0F);
++        if(windmill.align)
++        {
++            GL11.glRotatef(windmill.rotation, 1.0F, 0.0F, 0.0F);
++            GL11.glRotatef(0F, 0.0F, 0.0F, 1.0F);
++            GL11.glRotatef(90F, 0.0F, 1.0F, 0.0F);
++        } else
++        {
++            GL11.glRotatef(windmill.rotation, 0.0F, 0.0F, 1.0F);
++            GL11.glRotatef(0F, 1.0F, 0.0F, 0.0F);
++        }
++        modelWindMill.render(0.0F, 0.0F, -0.1F, 0.0F, 0.0F, 0.0625F);
++        GL11.glPopMatrix();
++    }
++}
 --- net/minecraft/game/item/recipe/FurnaceRecipes.java
 +++ net/minecraft/game/item/recipe/FurnaceRecipes.java
 @@ -5,34 +5,45 @@
@@ -1198,6 +1390,15 @@
  					}
  				} else {
  					this.clickBlock(var1, var2, var3, var4);
+@@ -138,7 +142,7 @@
+ 	public void updateController() {
+ 		this.syncCurrentPlayItem();
+ 		this.prevBlockDamageMP = this.curBlockDamageMP;
+-		this.mc.sndManager.playRandomMusicIfReady();
++		this.mc.sndManager.playRandomMusicIfReady(this.mc.theWorld.isCreativeWorld());
+ 	}
+ 
+ 	private void syncCurrentPlayItem() {
 --- net/minecraft/game/item/MinecartItem.java
 +++ net/minecraft/game/item/MinecartItem.java
 @@ -21,7 +21,8 @@
@@ -1457,7 +1658,7 @@
  							var6 = 16 >> var5 - 1;
 --- net/minecraft/client/render/RenderBlocks.java
 +++ net/minecraft/client/render/RenderBlocks.java
-@@ -4,20 +4,15 @@
+@@ -4,33 +4,28 @@
  import net.minecraft.game.physics.Vec3D;
  import net.minecraft.game.world.BlockAccess;
  import net.minecraft.game.world.World;
@@ -1483,6 +1684,26 @@
  public class RenderBlocks {
  	private BlockAccess blockAccess;
  	private int overrideBlockTexture = -1;
+-	private boolean flipTexture = false;
++	public boolean flipTexture = false;
+ 	private boolean renderAllFaces = false;
+ 	public static boolean fancyGrass = true;
+ 	public boolean field_31088_b = true;
+-	private int field_31087_g = 0;
+-	private int field_31086_h = 0;
+-	private int field_31085_i = 0;
+-	private int field_31084_j = 0;
+-	private int field_31083_k = 0;
+-	private int field_31082_l = 0;
++	public int eastUVRotate = 0;
++	public int westUVRotate = 0;
++	public int southUVRotate = 0;
++	public int northUVRotate = 0;
++	public int topUVRotate = 0;
++	public int bottomUVRotate = 0;
+ 	private boolean enableAO;
+ 	private float lightValueOwn;
+ 	private float aoLightValueXNeg;
 @@ -85,11 +80,19 @@
  	private boolean field_22357_ad;
  	private boolean field_22355_ae;
@@ -1508,7 +1729,7 @@
  		int var5 = var1.getRenderType();
  		var1.setBlockBoundsBasedOnState(this.blockAccess, var2, var3, var4);
 +		if(var5 == SharedConstants.CUSTOM_RENDER_TYPE) {
-+			return var1.renderCustom(var1,this.blockAccess,var2,var3,var4);
++			return var1.renderCustom(this,this.blockAccess,var2,var3,var4);
 +		}
  		return var5 == 0 ? this.renderStandardBlock(var1, var2, var3, var4) : (var5 == 4 ? this.renderBlockFluids(var1, var2, var3, var4) : (var5 == 13 ? this.renderBlockCactus(var1, var2, var3, var4) : (var5 == 1 ? this.renderBlockReed(var1, var2, var3, var4) : (var5 == 6 ? this.renderBlockCrops(var1, var2, var3, var4) : (var5 == 2 ? this.renderBlockTorch(var1, var2, var3, var4) : (var5 == 3 ? this.renderBlockFire(var1, var2, var3, var4) : (var5 == 5 ? this.renderBlockRedstoneWire(var1, var2, var3, var4) : (var5 == 8 ? this.renderBlockLadder(var1, var2, var3, var4) : (var5 == 7 ? this.renderBlockDoor(var1, var2, var3, var4) : (var5 == 9 ? this.renderBlockMinecartTrack((RailBlock)var1, var2, var3, var4) : (var5 == 10 ? this.renderBlockStairs(var1, var2, var3, var4) : (var5 == 11 ? this.renderBlockFence(var1, var2, var3, var4) : (var5 == 12 ? this.renderBlockLever(var1, var2, var3, var4) : (var5 == 14 ? this.renderBlockBed(var1, var2, var3, var4) : (var5 == 15 ? this.renderBlockRepeater(var1, var2, var3, var4) : (var5 == 16 ? this.func_31074_b(var1, var2, var3, var4, false) : (var5 == 17 ? this.func_31080_c(var1, var2, var3, var4, true) : false)))))))))))))))));
  	}
@@ -1570,7 +1791,145 @@
  		float var31 = 2.0F / 16.0F;
  		float var32 = (float)(var2 + 1);
  		float var33 = (float)(var2 + 1);
-@@ -472,18 +478,18 @@
+@@ -382,108 +388,108 @@
+ 		if(var7) {
+ 			switch(var8) {
+ 			case 0:
+-				this.field_31087_g = 3;
+-				this.field_31086_h = 3;
+-				this.field_31085_i = 3;
+-				this.field_31084_j = 3;
++				this.eastUVRotate = 3;
++				this.westUVRotate = 3;
++				this.southUVRotate = 3;
++				this.northUVRotate = 3;
+ 				var1.setBlockBounds(0.0F, 0.25F, 0.0F, 1.0F, 1.0F, 1.0F);
+ 				break;
+ 			case 1:
+ 				var1.setBlockBounds(0.0F, 0.0F, 0.0F, 1.0F, 12.0F / 16.0F, 1.0F);
+ 				break;
+ 			case 2:
+-				this.field_31085_i = 1;
+-				this.field_31084_j = 2;
++				this.southUVRotate = 1;
++				this.northUVRotate = 2;
+ 				var1.setBlockBounds(0.0F, 0.0F, 0.25F, 1.0F, 1.0F, 1.0F);
+ 				break;
+ 			case 3:
+-				this.field_31085_i = 2;
+-				this.field_31084_j = 1;
+-				this.field_31083_k = 3;
+-				this.field_31082_l = 3;
++				this.southUVRotate = 2;
++				this.northUVRotate = 1;
++				this.topUVRotate = 3;
++				this.bottomUVRotate = 3;
+ 				var1.setBlockBounds(0.0F, 0.0F, 0.0F, 1.0F, 1.0F, 12.0F / 16.0F);
+ 				break;
+ 			case 4:
+-				this.field_31087_g = 1;
+-				this.field_31086_h = 2;
+-				this.field_31083_k = 2;
+-				this.field_31082_l = 1;
++				this.eastUVRotate = 1;
++				this.westUVRotate = 2;
++				this.topUVRotate = 2;
++				this.bottomUVRotate = 1;
+ 				var1.setBlockBounds(0.25F, 0.0F, 0.0F, 1.0F, 1.0F, 1.0F);
+ 				break;
+ 			case 5:
+-				this.field_31087_g = 2;
+-				this.field_31086_h = 1;
+-				this.field_31083_k = 1;
+-				this.field_31082_l = 2;
++				this.eastUVRotate = 2;
++				this.westUVRotate = 1;
++				this.topUVRotate = 1;
++				this.bottomUVRotate = 2;
+ 				var1.setBlockBounds(0.0F, 0.0F, 0.0F, 12.0F / 16.0F, 1.0F, 1.0F);
+ 			}
+ 
+ 			this.renderStandardBlock(var1, var2, var3, var4);
+-			this.field_31087_g = 0;
+-			this.field_31086_h = 0;
+-			this.field_31085_i = 0;
+-			this.field_31084_j = 0;
+-			this.field_31083_k = 0;
+-			this.field_31082_l = 0;
++			this.eastUVRotate = 0;
++			this.westUVRotate = 0;
++			this.southUVRotate = 0;
++			this.northUVRotate = 0;
++			this.topUVRotate = 0;
++			this.bottomUVRotate = 0;
+ 			var1.setBlockBounds(0.0F, 0.0F, 0.0F, 1.0F, 1.0F, 1.0F);
+ 		} else {
+ 			switch(var8) {
+ 			case 0:
+-				this.field_31087_g = 3;
+-				this.field_31086_h = 3;
+-				this.field_31085_i = 3;
+-				this.field_31084_j = 3;
++				this.eastUVRotate = 3;
++				this.westUVRotate = 3;
++				this.southUVRotate = 3;
++				this.northUVRotate = 3;
+ 			case 1:
+ 			default:
+ 				break;
+ 			case 2:
+-				this.field_31085_i = 1;
+-				this.field_31084_j = 2;
++				this.southUVRotate = 1;
++				this.northUVRotate = 2;
+ 				break;
+ 			case 3:
+-				this.field_31085_i = 2;
+-				this.field_31084_j = 1;
+-				this.field_31083_k = 3;
+-				this.field_31082_l = 3;
++				this.southUVRotate = 2;
++				this.northUVRotate = 1;
++				this.topUVRotate = 3;
++				this.bottomUVRotate = 3;
+ 				break;
+ 			case 4:
+-				this.field_31087_g = 1;
+-				this.field_31086_h = 2;
+-				this.field_31083_k = 2;
+-				this.field_31082_l = 1;
++				this.eastUVRotate = 1;
++				this.westUVRotate = 2;
++				this.topUVRotate = 2;
++				this.bottomUVRotate = 1;
+ 				break;
+ 			case 5:
+-				this.field_31087_g = 2;
+-				this.field_31086_h = 1;
+-				this.field_31083_k = 1;
+-				this.field_31082_l = 2;
++				this.eastUVRotate = 2;
++				this.westUVRotate = 1;
++				this.topUVRotate = 1;
++				this.bottomUVRotate = 2;
+ 			}
+ 
+ 			this.renderStandardBlock(var1, var2, var3, var4);
+-			this.field_31087_g = 0;
+-			this.field_31086_h = 0;
+-			this.field_31085_i = 0;
+-			this.field_31084_j = 0;
+-			this.field_31083_k = 0;
+-			this.field_31082_l = 0;
++			this.eastUVRotate = 0;
++			this.westUVRotate = 0;
++			this.southUVRotate = 0;
++			this.northUVRotate = 0;
++			this.topUVRotate = 0;
++			this.bottomUVRotate = 0;
+ 		}
+ 
+ 		return true;
  	}
  
  	private void func_31076_a(double var1, double var3, double var5, double var7, double var9, double var11, float var13, double var14) {
@@ -1648,6 +2007,96 @@
  		var19.setColorOpaque_F(var13, var13, var13);
  		var19.addVertexWithUV(var3, var5, var9, var24, var22);
  		var19.addVertexWithUV(var1, var5, var9, var20, var22);
+@@ -545,10 +551,10 @@
+ 		double var13 = var5 ? 16.0D : 8.0D;
+ 		switch(var7) {
+ 		case 0:
+-			this.field_31087_g = 3;
+-			this.field_31086_h = 3;
+-			this.field_31085_i = 3;
+-			this.field_31084_j = 3;
++			this.eastUVRotate = 3;
++			this.westUVRotate = 3;
++			this.southUVRotate = 3;
++			this.northUVRotate = 3;
+ 			var1.setBlockBounds(0.0F, 0.0F, 0.0F, 1.0F, 0.25F, 1.0F);
+ 			this.renderStandardBlock(var1, var2, var3, var4);
+ 			this.func_31076_a((double)((float)var2 + 6.0F / 16.0F), (double)((float)var2 + 10.0F / 16.0F), (double)((float)var3 + 0.25F), (double)((float)var3 + 0.25F + var12), (double)((float)var4 + 10.0F / 16.0F), (double)((float)var4 + 10.0F / 16.0F), var11 * 0.8F, var13);
+@@ -565,8 +571,8 @@
+ 			this.func_31076_a((double)((float)var2 + 10.0F / 16.0F), (double)((float)var2 + 10.0F / 16.0F), (double)((float)var3 - 0.25F + 1.0F - var12), (double)((float)var3 - 0.25F + 1.0F), (double)((float)var4 + 10.0F / 16.0F), (double)((float)var4 + 6.0F / 16.0F), var11 * 0.6F, var13);
+ 			break;
+ 		case 2:
+-			this.field_31085_i = 1;
+-			this.field_31084_j = 2;
++			this.southUVRotate = 1;
++			this.northUVRotate = 2;
+ 			var1.setBlockBounds(0.0F, 0.0F, 0.0F, 1.0F, 1.0F, 0.25F);
+ 			this.renderStandardBlock(var1, var2, var3, var4);
+ 			this.func_31081_b((double)((float)var2 + 6.0F / 16.0F), (double)((float)var2 + 6.0F / 16.0F), (double)((float)var3 + 10.0F / 16.0F), (double)((float)var3 + 6.0F / 16.0F), (double)((float)var4 + 0.25F), (double)((float)var4 + 0.25F + var12), var11 * 0.6F, var13);
+@@ -575,10 +581,10 @@
+ 			this.func_31081_b((double)((float)var2 + 10.0F / 16.0F), (double)((float)var2 + 6.0F / 16.0F), (double)((float)var3 + 10.0F / 16.0F), (double)((float)var3 + 10.0F / 16.0F), (double)((float)var4 + 0.25F), (double)((float)var4 + 0.25F + var12), var11, var13);
+ 			break;
+ 		case 3:
+-			this.field_31085_i = 2;
+-			this.field_31084_j = 1;
+-			this.field_31083_k = 3;
+-			this.field_31082_l = 3;
++			this.southUVRotate = 2;
++			this.northUVRotate = 1;
++			this.topUVRotate = 3;
++			this.bottomUVRotate = 3;
+ 			var1.setBlockBounds(0.0F, 0.0F, 12.0F / 16.0F, 1.0F, 1.0F, 1.0F);
+ 			this.renderStandardBlock(var1, var2, var3, var4);
+ 			this.func_31081_b((double)((float)var2 + 6.0F / 16.0F), (double)((float)var2 + 6.0F / 16.0F), (double)((float)var3 + 10.0F / 16.0F), (double)((float)var3 + 6.0F / 16.0F), (double)((float)var4 - 0.25F + 1.0F - var12), (double)((float)var4 - 0.25F + 1.0F), var11 * 0.6F, var13);
+@@ -587,10 +593,10 @@
+ 			this.func_31081_b((double)((float)var2 + 10.0F / 16.0F), (double)((float)var2 + 6.0F / 16.0F), (double)((float)var3 + 10.0F / 16.0F), (double)((float)var3 + 10.0F / 16.0F), (double)((float)var4 - 0.25F + 1.0F - var12), (double)((float)var4 - 0.25F + 1.0F), var11, var13);
+ 			break;
+ 		case 4:
+-			this.field_31087_g = 1;
+-			this.field_31086_h = 2;
+-			this.field_31083_k = 2;
+-			this.field_31082_l = 1;
++			this.eastUVRotate = 1;
++			this.westUVRotate = 2;
++			this.topUVRotate = 2;
++			this.bottomUVRotate = 1;
+ 			var1.setBlockBounds(0.0F, 0.0F, 0.0F, 0.25F, 1.0F, 1.0F);
+ 			this.renderStandardBlock(var1, var2, var3, var4);
+ 			this.func_31077_c((double)((float)var2 + 0.25F), (double)((float)var2 + 0.25F + var12), (double)((float)var3 + 6.0F / 16.0F), (double)((float)var3 + 6.0F / 16.0F), (double)((float)var4 + 10.0F / 16.0F), (double)((float)var4 + 6.0F / 16.0F), var11 * 0.5F, var13);
+@@ -599,10 +605,10 @@
+ 			this.func_31077_c((double)((float)var2 + 0.25F), (double)((float)var2 + 0.25F + var12), (double)((float)var3 + 10.0F / 16.0F), (double)((float)var3 + 6.0F / 16.0F), (double)((float)var4 + 10.0F / 16.0F), (double)((float)var4 + 10.0F / 16.0F), var11 * 0.6F, var13);
+ 			break;
+ 		case 5:
+-			this.field_31087_g = 2;
+-			this.field_31086_h = 1;
+-			this.field_31083_k = 1;
+-			this.field_31082_l = 2;
++			this.eastUVRotate = 2;
++			this.westUVRotate = 1;
++			this.topUVRotate = 1;
++			this.bottomUVRotate = 2;
+ 			var1.setBlockBounds(12.0F / 16.0F, 0.0F, 0.0F, 1.0F, 1.0F, 1.0F);
+ 			this.renderStandardBlock(var1, var2, var3, var4);
+ 			this.func_31077_c((double)((float)var2 - 0.25F + 1.0F - var12), (double)((float)var2 - 0.25F + 1.0F), (double)((float)var3 + 6.0F / 16.0F), (double)((float)var3 + 6.0F / 16.0F), (double)((float)var4 + 10.0F / 16.0F), (double)((float)var4 + 6.0F / 16.0F), var11 * 0.5F, var13);
+@@ -611,12 +617,12 @@
+ 			this.func_31077_c((double)((float)var2 - 0.25F + 1.0F - var12), (double)((float)var2 - 0.25F + 1.0F), (double)((float)var3 + 10.0F / 16.0F), (double)((float)var3 + 6.0F / 16.0F), (double)((float)var4 + 10.0F / 16.0F), (double)((float)var4 + 10.0F / 16.0F), var11 * 0.6F, var13);
+ 		}
+ 
+-		this.field_31087_g = 0;
+-		this.field_31086_h = 0;
+-		this.field_31085_i = 0;
+-		this.field_31084_j = 0;
+-		this.field_31083_k = 0;
+-		this.field_31082_l = 0;
++		this.eastUVRotate = 0;
++		this.westUVRotate = 0;
++		this.southUVRotate = 0;
++		this.northUVRotate = 0;
++		this.topUVRotate = 0;
++		this.bottomUVRotate = 0;
+ 		var1.setBlockBounds(0.0F, 0.0F, 0.0F, 1.0F, 1.0F, 1.0F);
+ 		return true;
+ 	}
 @@ -628,7 +634,7 @@
  		Tessellator var8 = Tessellator.instance;
  		boolean var9 = this.overrideBlockTexture >= 0;
@@ -2182,7 +2631,7 @@
  			}
  
  			var9 = true;
-@@ -2678,20 +2684,20 @@
+@@ -2678,53 +2684,53 @@
  			var8 = this.overrideBlockTexture;
  		}
  
@@ -2213,14 +2662,15 @@
  		}
  
  		double var20 = var14;
-@@ -2699,10 +2705,10 @@
+ 		double var22 = var12;
  		double var24 = var16;
  		double var26 = var18;
- 		if(this.field_31082_l == 2) {
+-		if(this.field_31082_l == 2) {
 -			var12 = ((double)var10 + var1.minZ * 16.0D) / 256.0D;
 -			var16 = ((double)(var11 + 16) - var1.maxX * 16.0D) / 256.0D;
 -			var14 = ((double)var10 + var1.maxZ * 16.0D) / 256.0D;
 -			var18 = ((double)(var11 + 16) - var1.minX * 16.0D) / 256.0D;
++		if(this.bottomUVRotate == 2) {
 +			var12 = ((double)var10 + var1.minZ * 16.0D) / SharedConstants.ATLAS_SIZE;
 +			var16 = ((double)(var11 + 16) - var1.maxX * 16.0D) / SharedConstants.ATLAS_SIZE;
 +			var14 = ((double)var10 + var1.maxZ * 16.0D) / SharedConstants.ATLAS_SIZE;
@@ -2228,14 +2678,15 @@
  			var24 = var16;
  			var26 = var18;
  			var20 = var12;
-@@ -2710,10 +2716,10 @@
+ 			var22 = var14;
  			var16 = var18;
  			var18 = var24;
- 		} else if(this.field_31082_l == 1) {
+-		} else if(this.field_31082_l == 1) {
 -			var12 = ((double)(var10 + 16) - var1.maxZ * 16.0D) / 256.0D;
 -			var16 = ((double)var11 + var1.minX * 16.0D) / 256.0D;
 -			var14 = ((double)(var10 + 16) - var1.minZ * 16.0D) / 256.0D;
 -			var18 = ((double)var11 + var1.maxX * 16.0D) / 256.0D;
++		} else if(this.bottomUVRotate == 1) {
 +			var12 = ((double)(var10 + 16) - var1.maxZ * 16.0D) / SharedConstants.ATLAS_SIZE;
 +			var16 = ((double)var11 + var1.minX * 16.0D) / SharedConstants.ATLAS_SIZE;
 +			var14 = ((double)(var10 + 16) - var1.minZ * 16.0D) / SharedConstants.ATLAS_SIZE;
@@ -2243,14 +2694,15 @@
  			var20 = var14;
  			var22 = var12;
  			var12 = var14;
-@@ -2721,10 +2727,10 @@
+ 			var14 = var22;
  			var24 = var18;
  			var26 = var16;
- 		} else if(this.field_31082_l == 3) {
+-		} else if(this.field_31082_l == 3) {
 -			var12 = ((double)(var10 + 16) - var1.minX * 16.0D) / 256.0D;
 -			var14 = ((double)(var10 + 16) - var1.maxX * 16.0D - 0.01D) / 256.0D;
 -			var16 = ((double)(var11 + 16) - var1.minZ * 16.0D) / 256.0D;
 -			var18 = ((double)(var11 + 16) - var1.maxZ * 16.0D - 0.01D) / 256.0D;
++		} else if(this.bottomUVRotate == 3) {
 +			var12 = ((double)(var10 + 16) - var1.minX * 16.0D) / SharedConstants.ATLAS_SIZE;
 +			var14 = ((double)(var10 + 16) - var1.maxX * 16.0D - 0.01D) / SharedConstants.ATLAS_SIZE;
 +			var16 = ((double)(var11 + 16) - var1.minZ * 16.0D) / SharedConstants.ATLAS_SIZE;
@@ -2258,7 +2710,7 @@
  			var20 = var14;
  			var22 = var12;
  			var24 = var16;
-@@ -2760,20 +2766,20 @@
+@@ -2760,53 +2766,53 @@
  			var8 = this.overrideBlockTexture;
  		}
  
@@ -2289,14 +2741,15 @@
  		}
  
  		double var20 = var14;
-@@ -2781,10 +2787,10 @@
+ 		double var22 = var12;
  		double var24 = var16;
  		double var26 = var18;
- 		if(this.field_31083_k == 1) {
+-		if(this.field_31083_k == 1) {
 -			var12 = ((double)var10 + var1.minZ * 16.0D) / 256.0D;
 -			var16 = ((double)(var11 + 16) - var1.maxX * 16.0D) / 256.0D;
 -			var14 = ((double)var10 + var1.maxZ * 16.0D) / 256.0D;
 -			var18 = ((double)(var11 + 16) - var1.minX * 16.0D) / 256.0D;
++		if(this.topUVRotate == 1) {
 +			var12 = ((double)var10 + var1.minZ * 16.0D) / SharedConstants.ATLAS_SIZE;
 +			var16 = ((double)(var11 + 16) - var1.maxX * 16.0D) / SharedConstants.ATLAS_SIZE;
 +			var14 = ((double)var10 + var1.maxZ * 16.0D) / SharedConstants.ATLAS_SIZE;
@@ -2304,14 +2757,15 @@
  			var24 = var16;
  			var26 = var18;
  			var20 = var12;
-@@ -2792,10 +2798,10 @@
+ 			var22 = var14;
  			var16 = var18;
  			var18 = var24;
- 		} else if(this.field_31083_k == 2) {
+-		} else if(this.field_31083_k == 2) {
 -			var12 = ((double)(var10 + 16) - var1.maxZ * 16.0D) / 256.0D;
 -			var16 = ((double)var11 + var1.minX * 16.0D) / 256.0D;
 -			var14 = ((double)(var10 + 16) - var1.minZ * 16.0D) / 256.0D;
 -			var18 = ((double)var11 + var1.maxX * 16.0D) / 256.0D;
++		} else if(this.topUVRotate == 2) {
 +			var12 = ((double)(var10 + 16) - var1.maxZ * 16.0D) / SharedConstants.ATLAS_SIZE;
 +			var16 = ((double)var11 + var1.minX * 16.0D) / SharedConstants.ATLAS_SIZE;
 +			var14 = ((double)(var10 + 16) - var1.minZ * 16.0D) / SharedConstants.ATLAS_SIZE;
@@ -2319,14 +2773,15 @@
  			var20 = var14;
  			var22 = var12;
  			var12 = var14;
-@@ -2803,10 +2809,10 @@
+ 			var14 = var22;
  			var24 = var18;
  			var26 = var16;
- 		} else if(this.field_31083_k == 3) {
+-		} else if(this.field_31083_k == 3) {
 -			var12 = ((double)(var10 + 16) - var1.minX * 16.0D) / 256.0D;
 -			var14 = ((double)(var10 + 16) - var1.maxX * 16.0D - 0.01D) / 256.0D;
 -			var16 = ((double)(var11 + 16) - var1.minZ * 16.0D) / 256.0D;
 -			var18 = ((double)(var11 + 16) - var1.maxZ * 16.0D - 0.01D) / 256.0D;
++		} else if(this.topUVRotate == 3) {
 +			var12 = ((double)(var10 + 16) - var1.minX * 16.0D) / SharedConstants.ATLAS_SIZE;
 +			var14 = ((double)(var10 + 16) - var1.maxX * 16.0D - 0.01D) / SharedConstants.ATLAS_SIZE;
 +			var16 = ((double)(var11 + 16) - var1.minZ * 16.0D) / SharedConstants.ATLAS_SIZE;
@@ -2369,7 +2824,7 @@
  		double var20;
  		if(this.flipTexture) {
  			var20 = var12;
-@@ -2856,13 +2871,13 @@
+@@ -2856,46 +2871,46 @@
  		}
  
  		if(var1.minX < 0.0D || var1.maxX > 1.0D) {
@@ -2387,14 +2842,15 @@
  		}
  
  		var20 = var14;
-@@ -2870,10 +2885,10 @@
+ 		double var22 = var12;
  		double var24 = var16;
  		double var26 = var18;
- 		if(this.field_31087_g == 2) {
+-		if(this.field_31087_g == 2) {
 -			var12 = ((double)var10 + var1.minY * 16.0D) / 256.0D;
 -			var16 = ((double)(var11 + 16) - var1.minX * 16.0D) / 256.0D;
 -			var14 = ((double)var10 + var1.maxY * 16.0D) / 256.0D;
 -			var18 = ((double)(var11 + 16) - var1.maxX * 16.0D) / 256.0D;
++		if(this.eastUVRotate == 2) {
 +			var12 = ((double)var10 + var1.minY * 16.0D) / SharedConstants.ATLAS_SIZE;
 +			var16 = ((double)(var11 + 16) - var1.minX * 16.0D) / SharedConstants.ATLAS_SIZE;
 +			var14 = ((double)var10 + var1.maxY * 16.0D) / SharedConstants.ATLAS_SIZE;
@@ -2402,14 +2858,15 @@
  			var24 = var16;
  			var26 = var18;
  			var20 = var12;
-@@ -2881,10 +2896,10 @@
+ 			var22 = var14;
  			var16 = var18;
  			var18 = var24;
- 		} else if(this.field_31087_g == 1) {
+-		} else if(this.field_31087_g == 1) {
 -			var12 = ((double)(var10 + 16) - var1.maxY * 16.0D) / 256.0D;
 -			var16 = ((double)var11 + var1.maxX * 16.0D) / 256.0D;
 -			var14 = ((double)(var10 + 16) - var1.minY * 16.0D) / 256.0D;
 -			var18 = ((double)var11 + var1.minX * 16.0D) / 256.0D;
++		} else if(this.eastUVRotate == 1) {
 +			var12 = ((double)(var10 + 16) - var1.maxY * 16.0D) / SharedConstants.ATLAS_SIZE;
 +			var16 = ((double)var11 + var1.maxX * 16.0D) / SharedConstants.ATLAS_SIZE;
 +			var14 = ((double)(var10 + 16) - var1.minY * 16.0D) / SharedConstants.ATLAS_SIZE;
@@ -2417,14 +2874,15 @@
  			var20 = var14;
  			var22 = var12;
  			var12 = var14;
-@@ -2892,10 +2907,10 @@
+ 			var14 = var22;
  			var24 = var18;
  			var26 = var16;
- 		} else if(this.field_31087_g == 3) {
+-		} else if(this.field_31087_g == 3) {
 -			var12 = ((double)(var10 + 16) - var1.minX * 16.0D) / 256.0D;
 -			var14 = ((double)(var10 + 16) - var1.maxX * 16.0D - 0.01D) / 256.0D;
 -			var16 = ((double)var11 + var1.maxY * 16.0D) / 256.0D;
 -			var18 = ((double)var11 + var1.minY * 16.0D - 0.01D) / 256.0D;
++		} else if(this.eastUVRotate == 3) {
 +			var12 = ((double)(var10 + 16) - var1.minX * 16.0D) / SharedConstants.ATLAS_SIZE;
 +			var14 = ((double)(var10 + 16) - var1.maxX * 16.0D - 0.01D) / SharedConstants.ATLAS_SIZE;
 +			var16 = ((double)var11 + var1.maxY * 16.0D) / SharedConstants.ATLAS_SIZE;
@@ -2451,7 +2909,7 @@
  		double var20;
  		if(this.flipTexture) {
  			var20 = var12;
-@@ -2945,13 +2960,13 @@
+@@ -2945,46 +2960,46 @@
  		}
  
  		if(var1.minX < 0.0D || var1.maxX > 1.0D) {
@@ -2469,14 +2927,15 @@
  		}
  
  		var20 = var14;
-@@ -2959,10 +2974,10 @@
+ 		double var22 = var12;
  		double var24 = var16;
  		double var26 = var18;
- 		if(this.field_31086_h == 1) {
+-		if(this.field_31086_h == 1) {
 -			var12 = ((double)var10 + var1.minY * 16.0D) / 256.0D;
 -			var18 = ((double)(var11 + 16) - var1.minX * 16.0D) / 256.0D;
 -			var14 = ((double)var10 + var1.maxY * 16.0D) / 256.0D;
 -			var16 = ((double)(var11 + 16) - var1.maxX * 16.0D) / 256.0D;
++		if(this.westUVRotate == 1) {
 +			var12 = ((double)var10 + var1.minY * 16.0D) / SharedConstants.ATLAS_SIZE;
 +			var18 = ((double)(var11 + 16) - var1.minX * 16.0D) / SharedConstants.ATLAS_SIZE;
 +			var14 = ((double)var10 + var1.maxY * 16.0D) / SharedConstants.ATLAS_SIZE;
@@ -2484,14 +2943,15 @@
  			var24 = var16;
  			var26 = var18;
  			var20 = var12;
-@@ -2970,10 +2985,10 @@
+ 			var22 = var14;
  			var16 = var18;
  			var18 = var24;
- 		} else if(this.field_31086_h == 2) {
+-		} else if(this.field_31086_h == 2) {
 -			var12 = ((double)(var10 + 16) - var1.maxY * 16.0D) / 256.0D;
 -			var16 = ((double)var11 + var1.minX * 16.0D) / 256.0D;
 -			var14 = ((double)(var10 + 16) - var1.minY * 16.0D) / 256.0D;
 -			var18 = ((double)var11 + var1.maxX * 16.0D) / 256.0D;
++		} else if(this.westUVRotate == 2) {
 +			var12 = ((double)(var10 + 16) - var1.maxY * 16.0D) / SharedConstants.ATLAS_SIZE;
 +			var16 = ((double)var11 + var1.minX * 16.0D) / SharedConstants.ATLAS_SIZE;
 +			var14 = ((double)(var10 + 16) - var1.minY * 16.0D) / SharedConstants.ATLAS_SIZE;
@@ -2499,14 +2959,15 @@
  			var20 = var14;
  			var22 = var12;
  			var12 = var14;
-@@ -2981,10 +2996,10 @@
+ 			var14 = var22;
  			var24 = var18;
  			var26 = var16;
- 		} else if(this.field_31086_h == 3) {
+-		} else if(this.field_31086_h == 3) {
 -			var12 = ((double)(var10 + 16) - var1.minX * 16.0D) / 256.0D;
 -			var14 = ((double)(var10 + 16) - var1.maxX * 16.0D - 0.01D) / 256.0D;
 -			var16 = ((double)var11 + var1.maxY * 16.0D) / 256.0D;
 -			var18 = ((double)var11 + var1.minY * 16.0D - 0.01D) / 256.0D;
++		} else if(this.westUVRotate == 3) {
 +			var12 = ((double)(var10 + 16) - var1.minX * 16.0D) / SharedConstants.ATLAS_SIZE;
 +			var14 = ((double)(var10 + 16) - var1.maxX * 16.0D - 0.01D) / SharedConstants.ATLAS_SIZE;
 +			var16 = ((double)var11 + var1.maxY * 16.0D) / SharedConstants.ATLAS_SIZE;
@@ -2533,7 +2994,7 @@
  		double var20;
  		if(this.flipTexture) {
  			var20 = var12;
-@@ -3034,13 +3049,13 @@
+@@ -3034,46 +3049,46 @@
  		}
  
  		if(var1.minZ < 0.0D || var1.maxZ > 1.0D) {
@@ -2551,14 +3012,15 @@
  		}
  
  		var20 = var14;
-@@ -3048,10 +3063,10 @@
+ 		double var22 = var12;
  		double var24 = var16;
  		double var26 = var18;
- 		if(this.field_31084_j == 1) {
+-		if(this.field_31084_j == 1) {
 -			var12 = ((double)var10 + var1.minY * 16.0D) / 256.0D;
 -			var16 = ((double)(var11 + 16) - var1.maxZ * 16.0D) / 256.0D;
 -			var14 = ((double)var10 + var1.maxY * 16.0D) / 256.0D;
 -			var18 = ((double)(var11 + 16) - var1.minZ * 16.0D) / 256.0D;
++		if(this.northUVRotate == 1) {
 +			var12 = ((double)var10 + var1.minY * 16.0D) / SharedConstants.ATLAS_SIZE;
 +			var16 = ((double)(var11 + 16) - var1.maxZ * 16.0D) / SharedConstants.ATLAS_SIZE;
 +			var14 = ((double)var10 + var1.maxY * 16.0D) / SharedConstants.ATLAS_SIZE;
@@ -2566,14 +3028,15 @@
  			var24 = var16;
  			var26 = var18;
  			var20 = var12;
-@@ -3059,10 +3074,10 @@
+ 			var22 = var14;
  			var16 = var18;
  			var18 = var24;
- 		} else if(this.field_31084_j == 2) {
+-		} else if(this.field_31084_j == 2) {
 -			var12 = ((double)(var10 + 16) - var1.maxY * 16.0D) / 256.0D;
 -			var16 = ((double)var11 + var1.minZ * 16.0D) / 256.0D;
 -			var14 = ((double)(var10 + 16) - var1.minY * 16.0D) / 256.0D;
 -			var18 = ((double)var11 + var1.maxZ * 16.0D) / 256.0D;
++		} else if(this.northUVRotate == 2) {
 +			var12 = ((double)(var10 + 16) - var1.maxY * 16.0D) / SharedConstants.ATLAS_SIZE;
 +			var16 = ((double)var11 + var1.minZ * 16.0D) / SharedConstants.ATLAS_SIZE;
 +			var14 = ((double)(var10 + 16) - var1.minY * 16.0D) / SharedConstants.ATLAS_SIZE;
@@ -2581,14 +3044,15 @@
  			var20 = var14;
  			var22 = var12;
  			var12 = var14;
-@@ -3070,10 +3085,10 @@
+ 			var14 = var22;
  			var24 = var18;
  			var26 = var16;
- 		} else if(this.field_31084_j == 3) {
+-		} else if(this.field_31084_j == 3) {
 -			var12 = ((double)(var10 + 16) - var1.minZ * 16.0D) / 256.0D;
 -			var14 = ((double)(var10 + 16) - var1.maxZ * 16.0D - 0.01D) / 256.0D;
 -			var16 = ((double)var11 + var1.maxY * 16.0D) / 256.0D;
 -			var18 = ((double)var11 + var1.minY * 16.0D - 0.01D) / 256.0D;
++		} else if(this.northUVRotate == 3) {
 +			var12 = ((double)(var10 + 16) - var1.minZ * 16.0D) / SharedConstants.ATLAS_SIZE;
 +			var14 = ((double)(var10 + 16) - var1.maxZ * 16.0D - 0.01D) / SharedConstants.ATLAS_SIZE;
 +			var16 = ((double)var11 + var1.maxY * 16.0D) / SharedConstants.ATLAS_SIZE;
@@ -2615,7 +3079,7 @@
  		double var20;
  		if(this.flipTexture) {
  			var20 = var12;
-@@ -3123,13 +3138,13 @@
+@@ -3123,46 +3138,46 @@
  		}
  
  		if(var1.minZ < 0.0D || var1.maxZ > 1.0D) {
@@ -2633,14 +3097,15 @@
  		}
  
  		var20 = var14;
-@@ -3137,10 +3152,10 @@
+ 		double var22 = var12;
  		double var24 = var16;
  		double var26 = var18;
- 		if(this.field_31085_i == 2) {
+-		if(this.field_31085_i == 2) {
 -			var12 = ((double)var10 + var1.minY * 16.0D) / 256.0D;
 -			var16 = ((double)(var11 + 16) - var1.minZ * 16.0D) / 256.0D;
 -			var14 = ((double)var10 + var1.maxY * 16.0D) / 256.0D;
 -			var18 = ((double)(var11 + 16) - var1.maxZ * 16.0D) / 256.0D;
++		if(this.southUVRotate == 2) {
 +			var12 = ((double)var10 + var1.minY * 16.0D) / SharedConstants.ATLAS_SIZE;
 +			var16 = ((double)(var11 + 16) - var1.minZ * 16.0D) / SharedConstants.ATLAS_SIZE;
 +			var14 = ((double)var10 + var1.maxY * 16.0D) / SharedConstants.ATLAS_SIZE;
@@ -2648,14 +3113,15 @@
  			var24 = var16;
  			var26 = var18;
  			var20 = var12;
-@@ -3148,10 +3163,10 @@
+ 			var22 = var14;
  			var16 = var18;
  			var18 = var24;
- 		} else if(this.field_31085_i == 1) {
+-		} else if(this.field_31085_i == 1) {
 -			var12 = ((double)(var10 + 16) - var1.maxY * 16.0D) / 256.0D;
 -			var16 = ((double)var11 + var1.maxZ * 16.0D) / 256.0D;
 -			var14 = ((double)(var10 + 16) - var1.minY * 16.0D) / 256.0D;
 -			var18 = ((double)var11 + var1.minZ * 16.0D) / 256.0D;
++		} else if(this.southUVRotate == 1) {
 +			var12 = ((double)(var10 + 16) - var1.maxY * 16.0D) / SharedConstants.ATLAS_SIZE;
 +			var16 = ((double)var11 + var1.maxZ * 16.0D) / SharedConstants.ATLAS_SIZE;
 +			var14 = ((double)(var10 + 16) - var1.minY * 16.0D) / SharedConstants.ATLAS_SIZE;
@@ -2663,14 +3129,15 @@
  			var20 = var14;
  			var22 = var12;
  			var12 = var14;
-@@ -3159,10 +3174,10 @@
+ 			var14 = var22;
  			var24 = var18;
  			var26 = var16;
- 		} else if(this.field_31085_i == 3) {
+-		} else if(this.field_31085_i == 3) {
 -			var12 = ((double)(var10 + 16) - var1.minZ * 16.0D) / 256.0D;
 -			var14 = ((double)(var10 + 16) - var1.maxZ * 16.0D - 0.01D) / 256.0D;
 -			var16 = ((double)var11 + var1.maxY * 16.0D) / 256.0D;
 -			var18 = ((double)var11 + var1.minY * 16.0D - 0.01D) / 256.0D;
++		} else if(this.southUVRotate == 3) {
 +			var12 = ((double)(var10 + 16) - var1.minZ * 16.0D) / SharedConstants.ATLAS_SIZE;
 +			var14 = ((double)(var10 + 16) - var1.maxZ * 16.0D - 0.01D) / SharedConstants.ATLAS_SIZE;
 +			var16 = ((double)var11 + var1.maxY * 16.0D) / SharedConstants.ATLAS_SIZE;
@@ -2897,8 +3364,22 @@
  	protected void entityInit() {
 --- net/minecraft/game/world/block/StairsBlock.java
 +++ net/minecraft/game/world/block/StairsBlock.java
-@@ -107,15 +107,16 @@
+@@ -98,24 +98,25 @@
+ 		return this.modelBlock.getRenderBlockPass();
  	}
+ 
+-	public int idDropped(int var1, Random var2) {
+-		return this.modelBlock.idDropped(var1, var2);
+-	}
++	/*public int idDropped(int var1, Random var2) {
++		return ;
++	}*/
+ 
+-	public int quantityDropped(Random var1) {
++	/*public int quantityDropped(Random var1) {
+ 		return this.modelBlock.quantityDropped(var1);
+-	}
++	}*/
  
  	public int getBlockTextureFromSideAndMetadata(int var1, int var2) {
 -		return this.modelBlock.getBlockTextureFromSideAndMetadata(var1, var2);
@@ -2982,7 +3463,14 @@
  	}
 --- net/minecraft/game/world/block/Block.java
 +++ net/minecraft/game/world/block/Block.java
-@@ -7,15 +7,7 @@
+@@ -2,20 +2,14 @@
+ 
+ import java.util.ArrayList;
+ import java.util.Random;
++
++import net.minecraft.client.render.RenderBlocks;
+ import net.minecraft.game.entity.Entity;
+ import net.minecraft.game.entity.LivingEntity;
  import net.minecraft.game.entity.MobType;
  import net.minecraft.game.entity.misc.ItemEntity;
  import net.minecraft.game.entity.player.PlayerEntity;
@@ -2999,8 +3487,12 @@
  import net.minecraft.game.physics.AxisAlignedBB;
  import net.minecraft.game.physics.Vec3D;
  import net.minecraft.game.stats.StatCollector;
-@@ -25,6 +17,9 @@
+@@ -23,8 +17,13 @@
+ import net.minecraft.game.world.BlockAccess;
+ import net.minecraft.game.world.MovingObjectPosition;
  import net.minecraft.game.world.World;
++import net.minecraft.game.world.block.mechanical.AxleBlock;
++import net.minecraft.game.world.block.mechanical.GearboxBlock;
  import net.minecraft.game.world.block.tileentity.SignTileEntity;
  import net.minecraft.game.world.material.Material;
 +import net.minecraft.util.SharedConstants;
@@ -3009,7 +3501,7 @@
  
  public class Block {
  	public static final StepSound soundPowderFootstep = new StepSound("stone", 1.0F, 1.0F);
-@@ -36,110 +31,113 @@
+@@ -36,110 +35,116 @@
  	public static final StepSound soundGlassFootstep = new StepSoundStone("stone", 1.0F, 1.0F);
  	public static final StepSound soundClothFootstep = new StepSound("cloth", 1.0F, 1.0F);
  	public static final StepSound soundSandFootstep = new StepSoundSand("sand", 1.0F, 1.0F);
@@ -3186,10 +3678,13 @@
 +
 +	public static final Block limestone = (new StoneBlock(97, getAtlasTexture(0,3), 1)).setHardness(1.5F).setResistance(10.0F).setStepSound(soundStoneFootstep).setName("limestone");
 +	public static final Block granite = (new StoneBlock(98, getAtlasTexture(0,4), 2)).setHardness(1.5F).setResistance(10.0F).setStepSound(soundStoneFootstep).setName("granite");
++
++	public static final Block axle = (new AxleBlock(99)).setHardness(2.0F).setResistance(5.0F).setStepSound(soundWoodFootstep).setName("axle").setRequiresSelfNotify();
++	public static final Block gearbox = (new GearboxBlock(100)).setHardness(2.0F).setResistance(5.0F).setStepSound(soundWoodFootstep).setName("gearbox").setRequiresSelfNotify();
  	public int textureIndex;
  	public final int blockID;
  	protected float hardness;
-@@ -543,7 +541,9 @@
+@@ -543,7 +548,9 @@
  
  	public void harvestBlock(World var1, PlayerEntity var2, int var3, int var4, int var5, int var6) {
  		var2.addStat(StatList.mineBlockStatArray[this.blockID], 1);
@@ -3200,11 +3695,11 @@
  	}
  
  	public boolean canBlockStay(World var1, int var2, int var3, int var4) {
-@@ -582,18 +582,24 @@
+@@ -582,18 +589,24 @@
  		return this.material.getMaterialMobility();
  	}
  
-+	public boolean renderCustom(Block block, BlockAccess access, int x, int y, int z) {
++	public boolean renderCustom(RenderBlocks renderBlocks, BlockAccess access, int x, int y, int z) {
 +		return false;
 +	}
 +
@@ -3585,7 +4080,13 @@
  					var10 = var14.getBlockID(var7, var9 - 1, var8);
  					var15 = var14.getBlockID(var7, var9, var8);
  					if(this.canRain() && var15 == 0 && Block.snowLayer.canPlaceBlockAt(this, var7 + var3, var9, var8 + var4) && var10 != 0 && var10 != Block.ice.blockID && Block.blocksList[var10].material.getIsSolid()) {
-@@ -2033,8 +2042,8 @@
+@@ -2028,13 +2037,13 @@
+ 				}
+ 			}
+ 
+-			for(var6 = 0; var6 < 80; ++var6) {
++			for(var6 = 0; var6 < (80*2); ++var6) {
+ 				this.distHashCounter = this.distHashCounter * 3 + 1013904223;
  				var7 = this.distHashCounter >> 2;
  				var8 = var7 & 15;
  				var9 = var7 >> 8 & 15;
@@ -3870,14 +4371,16 @@
  	}
  
  	public void updateRidden() {
-@@ -203,6 +207,15 @@
+@@ -203,6 +207,17 @@
  	}
  
  	public void onLivingUpdate() {
 +		float runFactor = MathHelper.lerp(damageSprintRecover/200.0,0,0.5F);
 +		if(damageSprintRecover < 200) {
-+			damageSprintRecover++;
-+		}
++            if (damageSprintRecover < 140 || !isRunning()) {
++                damageSprintRecover++;
++            }
++        }
 +		this.groundSpeedMultiplier = this.isRunning() ? 1.0F + runFactor : 1.0F;
 +		this.airSpeedMultiplier = this.noClip
 +				? this.isRunning() ? 7.5F : 2.5F
@@ -3886,7 +4389,7 @@
  		if(this.worldObj.difficultySetting == 0 && this.health < 20 && this.ticksExisted % 20 * 12 == 0) {
  			this.heal(1);
  		}
-@@ -210,6 +223,20 @@
+@@ -210,6 +225,20 @@
  		this.inventory.decrementAnimations();
  		this.prevRideThing = this.rideThing;
  		super.onLivingUpdate();
@@ -3907,7 +4410,7 @@
  		float var1 = MathHelper.sqrt(this.motionX * this.motionX + this.motionZ * this.motionZ);
  		float var2 = (float)Math.atan(-this.motionY * (double)0.2F) * 15.0F;
  		if(var1 > 0.1F) {
-@@ -240,6 +267,10 @@
+@@ -240,6 +269,10 @@
  
  	}
  
@@ -3918,7 +4421,7 @@
  	private void collideWithPlayer(Entity var1) {
  		var1.onCollideWithPlayer(this);
  	}
-@@ -269,7 +300,7 @@
+@@ -269,7 +302,7 @@
  		this.addStat(StatList.deathsStat, 1);
  	}
  
@@ -3927,7 +4430,7 @@
  		this.score += var2;
  		if(var1 instanceof PlayerEntity) {
  			this.addStat(StatList.playerKillsStat, 1);
-@@ -279,6 +310,10 @@
+@@ -279,6 +312,10 @@
  
  	}
  
@@ -3938,7 +4441,7 @@
  	public void dropCurrentItem() {
  		this.dropPlayerItemWithRandomChoice(this.inventory.decrStackSize(this.inventory.currentItem, 1), false);
  	}
-@@ -388,6 +423,7 @@
+@@ -388,6 +425,7 @@
  	}
  
  	public boolean hurt(Entity var1, int var2) {
@@ -3946,7 +4449,7 @@
  		this.age = 0;
  		if(this.health <= 0) {
  			return false;
-@@ -423,6 +459,7 @@
+@@ -423,6 +461,7 @@
  				}
  
  				this.addStat(StatList.damageTakenStat, var2);
@@ -3954,7 +4457,7 @@
  				return super.hurt(var1, var2);
  			}
  		}
-@@ -470,6 +507,7 @@
+@@ -470,6 +509,7 @@
  	}
  
  	protected void damageEntity(int var1) {
@@ -3962,7 +4465,7 @@
  		int var2 = 25 - this.inventory.getTotalArmorValue();
  		int var3 = var1 * var2 + this.damageRemainder;
  		this.inventory.damageArmor(var1);
-@@ -525,6 +563,15 @@
+@@ -525,6 +565,15 @@
  				++var2;
  			}
  
@@ -3978,7 +4481,7 @@
  			var1.hurt(this, var2);
  			ItemStack var3 = this.getCurrentEquippedItem();
  			if(var3 != null && var1 instanceof LivingEntity) {
-@@ -539,7 +586,6 @@
+@@ -539,7 +588,6 @@
  				if(var1.isEntityAlive()) {
  					this.alertWolves((LivingEntity)var1, true);
  				}
@@ -3988,12 +4491,13 @@
  		}
 --- net/minecraft/network/packet/Packet.java
 +++ net/minecraft/network/packet/Packet.java
-@@ -187,6 +187,8 @@
+@@ -187,6 +187,9 @@
  		addIdClassMapping(104, true, false, Packet104WindowItems.class);
  		addIdClassMapping(105, true, false, Packet105UpdateProgressbar.class);
  		addIdClassMapping(106, true, true, Packet106Transaction.class);
-+		addIdClassMapping(107, true, true, Packet107CreativeSetSlot.class);
-+		addIdClassMapping(108, true, true, Packet108NoClip.class);
++		addIdClassMapping(107, false, true, Packet107CreativeSetSlot.class);
++		addIdClassMapping(108, false, true, Packet108NoClip.class);
++		addIdClassMapping(109, false, true, Packet109Craft.class);
  		addIdClassMapping(130, true, true, Packet130UpdateSign.class);
  		addIdClassMapping(131, true, false, Packet131MapData.class);
  		addIdClassMapping(200, true, false, Packet200Statistic.class);
@@ -4371,6 +4875,69 @@
 +		this.creative = var6;
  	}
  }
+--- /dev/null
++++ net/minecraft/client/render/texture/TextureAxleFX.java
+@@ -1,0 +1,60 @@
++package net.minecraft.client.render.texture;
++
++import net.minecraft.client.Minecraft;
++
++import javax.imageio.ImageIO;
++import java.awt.image.BufferedImage;
++import java.io.IOException;
++
++import static net.minecraft.util.SharedConstants.getAtlasTexture;
++
++public class TextureAxleFX extends TextureFX {
++    private Minecraft mc;
++    private int[] axle = new int[256];
++    private boolean vertical;
++    private int shift = 0;
++    private int updateDelay = 2;
++
++    public TextureAxleFX(Minecraft var1, boolean vertical) {
++        super(getAtlasTexture(27,6));
++        this.mc = var1;
++        this.tileImage = 0;
++        this.vertical = vertical;
++        try {
++            BufferedImage var2 = ImageIO.read(Minecraft.class.getResource("/terrain.png"));
++            int var3 = this.iconIndex % 32 * 16;
++            int var4 = this.iconIndex / 32 * 16;
++            var2.getRGB(var3, var4, 16, 16, this.axle, 0, 16);
++        } catch (IOException var5) {
++            var5.printStackTrace();
++        }
++    }
++
++    public void onTick() {
++        if(updateDelay <= 0) {
++            shift = Math.floorMod((shift + 1),16);
++            for (int index = 0; index < 16; index++) {
++                for (int pixel = 0; pixel < 16; pixel++) {
++                    int shiftedIndex = (index + shift) % 16;
++                    int shiftedPixel = (pixel + shift) % 16;
++                    int i;
++                    if (vertical) {
++                        i = (shiftedIndex * 16) + pixel;
++                    } else {
++                        i = (index * 16) + shiftedPixel;
++                        //i = 0;
++                    }
++                    int v = axle[i];
++                    int f = (index * 16) + pixel;
++                    this.imageData[f * 4 + 0] = (byte) ((v >> 16) & 0xFF);
++                    this.imageData[f * 4 + 1] = (byte) ((v >> 8) & 0xFF);
++                    this.imageData[f * 4 + 2] = (byte) (v & 0xFF);
++                    this.imageData[f * 4 + 3] = (byte) 0xff;
++                }
++            }
++            updateDelay = 2;
++        } else {
++            updateDelay--;
++        }
++    }
++}
 --- net/minecraft/game/world/terrain/feature/OreFeature.java
 +++ net/minecraft/game/world/terrain/feature/OreFeature.java
 @@ -8,10 +8,12 @@
@@ -4584,7 +5151,7 @@
  import net.minecraft.game.entity.LivingEntity;
  import net.minecraft.util.MathHelper;
  import paulscode.sound.SoundSystem;
-@@ -12,10 +13,11 @@
+@@ -12,10 +13,12 @@
  import paulscode.sound.libraries.LibraryLWJGLOpenAL;
  
  public class SoundManager {
@@ -4593,11 +5160,12 @@
  	private SoundPool soundPoolSounds = new SoundPool();
  	private SoundPool soundPoolStreaming = new SoundPool();
  	private SoundPool soundPoolMusic = new SoundPool();
++	public SoundPool soundPoolCreativeMusic = new SoundPool();
 +	public SoundPool soundPoolTitleMusic = new SoundPool();
  	private int field_587_e = 0;
  	private GameSettings options;
  	private static boolean loaded = false;
-@@ -62,8 +64,10 @@
+@@ -62,8 +65,10 @@
  		if(loaded) {
  			if(this.options.musicVolume == 0.0F) {
  				sndSystem.stop("BgMusic");
@@ -4608,7 +5176,27 @@
  			}
  		}
  
-@@ -106,6 +110,26 @@
+@@ -88,15 +93,15 @@
+ 		this.soundPoolMusic.addSound(var1, var2);
+ 	}
+ 
+-	public void playRandomMusicIfReady() {
++	public void playRandomMusicIfReady(boolean creative) {
+ 		if(loaded && this.options.musicVolume != 0.0F) {
+ 			if(!sndSystem.playing("BgMusic") && !sndSystem.playing("streaming")) {
+-				if(this.ticksBeforeMusic > 0) {
++				/*if(this.ticksBeforeMusic > 0) {
+ 					--this.ticksBeforeMusic;
+ 					return;
+-				}
++				}*/
+ 
+-				SoundPoolEntry var1 = this.soundPoolMusic.getRandomSound();
++				SoundPoolEntry var1 = creative && this.rand.nextInt(4) != 0 ? this.soundPoolCreativeMusic.getRandomSound() : this.soundPoolMusic.getRandomSound();
+ 				if(var1 != null) {
+ 					this.ticksBeforeMusic = this.rand.nextInt(12000) + 12000;
+ 					sndSystem.backgroundMusic("BgMusic", var1.soundUrl, var1.soundName, false);
+@@ -106,6 +111,26 @@
  			}
  
  		}
@@ -4897,35 +5485,84 @@
  public class CraftingManager {
  	private static final CraftingManager instance = new CraftingManager();
 -	private List recipes = new ArrayList();
-+	private HashMap<String, CraftingRecipe> recipes = new HashMap<>();
++	public HashMap<String, CraftingRecipe> recipes = new HashMap<>();
  
  	public static final CraftingManager getInstance() {
  		return instance;
-@@ -25,7 +28,11 @@
+@@ -25,38 +28,40 @@
  		(new RecipesCrafting()).addRecipes(this);
  		(new RecipesArmor()).addRecipes(this);
  		(new RecipesDyes()).addRecipes(this);
 -		this.addRecipe(new ItemStack(Item.paper, 3), new Object[]{"###", Character.valueOf('#'), Item.sugarCane});
+-		this.addRecipe(new ItemStack(Item.book, 1), new Object[]{"#", "#", "#", Character.valueOf('#'), Item.paper});
+-		this.addRecipe(new ItemStack(Block.fence, 2), new Object[]{"###", "###", Character.valueOf('#'), Item.stick});
+-		this.addRecipe(new ItemStack(Block.jukebox, 1), new Object[]{"###", "#X#", "###", Character.valueOf('#'), Block.planks, Character.valueOf('X'), Item.diamond});
+-		this.addRecipe(new ItemStack(Block.noteBlock, 1), new Object[]{"###", "#X#", "###", Character.valueOf('#'), Block.planks, Character.valueOf('X'), Item.redstone});
+-		this.addRecipe(new ItemStack(Block.bookshelf, 1), new Object[]{"###", "XXX", "###", Character.valueOf('#'), Block.planks, Character.valueOf('X'), Item.book});
+-		this.addRecipe(new ItemStack(Block.snow, 1), new Object[]{"##", "##", Character.valueOf('#'), Item.snowball});
+-		this.addRecipe(new ItemStack(Block.clayBlock, 1), new Object[]{"##", "##", Character.valueOf('#'), Item.clay});
+-		this.addRecipe(new ItemStack(Block.brick, 1), new Object[]{"##", "##", Character.valueOf('#'), Item.brick});
+-		this.addRecipe(new ItemStack(Block.glowstone, 1), new Object[]{"##", "##", Character.valueOf('#'), Item.glowstoneDust});
+-		this.addRecipe(new ItemStack(Block.wool, 1), new Object[]{"##", "##", Character.valueOf('#'), Item.string});
+-		this.addRecipe(new ItemStack(Block.tnt, 1), new Object[]{"X#X", "#X#", "X#X", Character.valueOf('X'), Item.gunpowder, Character.valueOf('#'), Block.sand});
+-		this.addRecipe(new ItemStack(Block.stoneSlab, 3, 3), new Object[]{"###", Character.valueOf('#'), Block.cobblestone});
+-		this.addRecipe(new ItemStack(Block.stoneSlab, 3, 0), new Object[]{"###", Character.valueOf('#'), Block.stone});
+-		this.addRecipe(new ItemStack(Block.stoneSlab, 3, 1), new Object[]{"###", Character.valueOf('#'), Block.sandstone});
+-		this.addRecipe(new ItemStack(Block.stoneSlab, 3, 2), new Object[]{"###", Character.valueOf('#'), Block.planks});
+-		this.addRecipe(new ItemStack(Block.ladder, 2), new Object[]{"# #", "###", "# #", Character.valueOf('#'), Item.stick});
+-		this.addRecipe(new ItemStack(Item.door, 1), new Object[]{"##", "##", "##", Character.valueOf('#'), Block.planks});
+-		this.addRecipe(new ItemStack(Block.trapdoor, 2), new Object[]{"###", "###", Character.valueOf('#'), Block.planks});
+-		this.addRecipe(new ItemStack(Item.ironDoor, 1), new Object[]{"##", "##", "##", Character.valueOf('#'), Item.ironIngot});
+-		this.addRecipe(new ItemStack(Item.sign, 1), new Object[]{"###", "###", " X ", Character.valueOf('#'), Block.planks, Character.valueOf('X'), Item.stick});
+-		this.addRecipe(new ItemStack(Item.cake, 1), new Object[]{"AAA", "BEB", "CCC", Character.valueOf('A'), Item.milkBucket, Character.valueOf('B'), Item.sugar, Character.valueOf('C'), Item.wheat, Character.valueOf('E'), Item.egg});
+-		this.addRecipe(new ItemStack(Item.sugar, 1), new Object[]{"#", Character.valueOf('#'), Item.sugarCane});
+-		this.addRecipe(new ItemStack(Block.planks, 4), new Object[]{"#", Character.valueOf('#'), Block.log});
+-		this.addRecipe(new ItemStack(Item.stick, 4), new Object[]{"#", "#", Character.valueOf('#'), Block.planks});
+-		this.addRecipe(new ItemStack(Block.torch, 4), new Object[]{"X", "#", Character.valueOf('X'), Item.coal, Character.valueOf('#'), Item.stick});
+-		this.addRecipe(new ItemStack(Block.torch, 4), new Object[]{"X", "#", Character.valueOf('X'), new ItemStack(Item.coal, 1, 1), Character.valueOf('#'), Item.stick});
+-		this.addRecipe(new ItemStack(Item.bowlEmpty, 4), new Object[]{"# #", " # ", Character.valueOf('#'), Block.planks});
+-		this.addRecipe(new ItemStack(Block.rail, 16), new Object[]{"X X", "X#X", "X X", Character.valueOf('X'), Item.ironIngot, Character.valueOf('#'), Item.stick});
+-		this.addRecipe(new ItemStack(Block.poweredRail, 6), new Object[]{"X X", "X#X", "XRX", Character.valueOf('X'), Item.goldIngot, Character.valueOf('R'), Item.redstone, Character.valueOf('#'), Item.stick});
+-		this.addRecipe(new ItemStack(Block.detectorRail, 6), new Object[]{"X X", "X#X", "XRX", Character.valueOf('X'), Item.ironIngot, Character.valueOf('R'), Item.redstone, Character.valueOf('#'), Block.stonePressurePlate});
+-		this.addRecipe(new ItemStack(Item.minecart, 1), new Object[]{"# #", "###", Character.valueOf('#'), Item.ironIngot});
 +		r("planks.oak",true,new ItemStack(Block.planks, 4, 0), new ItemStack(Block.log,1,0));
 +		r("planks.spruce",true,new ItemStack(Block.planks, 4, 4), new ItemStack(Block.log,1,1));
 +		r("planks.birch",true,new ItemStack(Block.planks, 4, 16), new ItemStack(Block.log,1,2));
 +
-+		/*this.addRecipe(new ItemStack(Item.paper, 3), new Object[]{"###", Character.valueOf('#'), Item.sugarCane});
- 		this.addRecipe(new ItemStack(Item.book, 1), new Object[]{"#", "#", "#", Character.valueOf('#'), Item.paper});
- 		this.addRecipe(new ItemStack(Block.fence, 2), new Object[]{"###", "###", Character.valueOf('#'), Item.stick});
- 		this.addRecipe(new ItemStack(Block.jukebox, 1), new Object[]{"###", "#X#", "###", Character.valueOf('#'), Block.planks, Character.valueOf('X'), Item.diamond});
-@@ -48,7 +55,9 @@
- 		this.addRecipe(new ItemStack(Item.sign, 1), new Object[]{"###", "###", " X ", Character.valueOf('#'), Block.planks, Character.valueOf('X'), Item.stick});
- 		this.addRecipe(new ItemStack(Item.cake, 1), new Object[]{"AAA", "BEB", "CCC", Character.valueOf('A'), Item.milkBucket, Character.valueOf('B'), Item.sugar, Character.valueOf('C'), Item.wheat, Character.valueOf('E'), Item.egg});
- 		this.addRecipe(new ItemStack(Item.sugar, 1), new Object[]{"#", Character.valueOf('#'), Item.sugarCane});
--		this.addRecipe(new ItemStack(Block.planks, 4), new Object[]{"#", Character.valueOf('#'), Block.log});
-+		this.addRecipe(new ItemStack(Block.planks, 4, 0), new Object[]{"#", Character.valueOf('#'), new ItemStack(Block.log,1,0)});
-+		this.addRecipe(new ItemStack(Block.planks, 4, 4), new Object[]{"#", Character.valueOf('#'), new ItemStack(Block.log,1,1)});
-+		this.addRecipe(new ItemStack(Block.planks, 4, 16), new Object[]{"#", Character.valueOf('#'), new ItemStack(Block.log,1,2)});
- 		this.addRecipe(new ItemStack(Item.stick, 4), new Object[]{"#", "#", Character.valueOf('#'), Block.planks});
- 		this.addRecipe(new ItemStack(Block.torch, 4), new Object[]{"X", "#", Character.valueOf('X'), Item.coal, Character.valueOf('#'), Item.stick});
- 		this.addRecipe(new ItemStack(Block.torch, 4), new Object[]{"X", "#", Character.valueOf('X'), new ItemStack(Item.coal, 1, 1), Character.valueOf('#'), Item.stick});
-@@ -81,12 +90,16 @@
++		r("paper",false,new ItemStack(Item.paper, 3),new ItemStack(Item.sugarCane,3));
++		r("book",false,new ItemStack(Item.book),new ItemStack(Item.paper,3));
++
++		r("fence",false,new ItemStack(Block.fence, 2),new ItemStack(Item.stick,6));
++		r("bookshelf",false,new ItemStack(Block.bookshelf),new ItemStack(Block.planks,6,-1),new ItemStack(Item.book,3));
++		r("snow",true,new ItemStack(Block.snow),new ItemStack(Item.snowball,4));
++		r("clayBlock",true,new ItemStack(Block.clayBlock),new ItemStack(Item.clay,4));
++		r("brick",true,new ItemStack(Block.brick),new ItemStack(Item.brick,4));
++		r("glowstone",true,new ItemStack(Block.glowstone),new ItemStack(Item.glowstoneDust,4));
++		r("wool.fromString",true,new ItemStack(Block.wool),new ItemStack(Item.string,4));
++		r("tnt",false,new ItemStack(Block.tnt),new ItemStack(Item.gunpowder,5),new ItemStack(Block.sand,4));
++		r("slab.cobble",false,new ItemStack(Block.stoneSlab, 3, 3),new ItemStack(Block.cobblestone,3,-1));
++		r("slab.stone",false,new ItemStack(Block.stoneSlab, 3, 0),new ItemStack(Block.stone,3));
++		r("slab.sandstone",false,new ItemStack(Block.stoneSlab, 3, 1),new ItemStack(Block.sandstone,3));
++		r("slab.planks",false,new ItemStack(Block.stoneSlab, 3, 2),new ItemStack(Block.planks,3,-1));
++		r("ladder",false,new ItemStack(Block.ladder, 2),new ItemStack(Item.stick,7));
++		r("door",false,new ItemStack(Item.door),new ItemStack(Block.planks,6,-1));
++		r("trapdoor",false,new ItemStack(Block.trapdoor,2),new ItemStack(Block.planks,6,-1));
++		r("ironDoor",false,new ItemStack(Item.ironDoor),new ItemStack(Item.ironIngot,6));
++		r("sign",false,new ItemStack(Item.sign),new ItemStack(Block.planks,6,-1),new ItemStack(Item.stick));
++		r("sugar",true,new ItemStack(Item.sugar),new ItemStack(Item.sugarCane));
++		r("stick",true,new ItemStack(Item.stick,4),new ItemStack(Block.planks,2,-1));
++		r("bowl",false,new ItemStack(Item.bowlEmpty,4), new ItemStack(Block.planks,3,-1));
++		r("torch",true,new ItemStack(Block.torch,4), new ItemStack(Item.stick), new ItemStack(Item.coal,1,-1));
++		r("rail",false,new ItemStack(Block.rail,16), new ItemStack(Item.ironIngot,6), new ItemStack(Item.stick));
++		r("poweredRail",false,new ItemStack(Block.poweredRail,6), new ItemStack(Item.goldIngot,6), new ItemStack(Item.stick), new ItemStack(Item.redstone));
++		r("detectorRail",false,new ItemStack(Block.detectorRail,6), new ItemStack(Item.ironIngot,6), new ItemStack(Item.stick), new ItemStack(Block.stonePressurePlate));
++		r("minecart",false,new ItemStack(Item.minecart), new ItemStack(Item.ironIngot,6));
++		r("boat",false,new ItemStack(Item.boat), new ItemStack(Block.planks,6,-1));
++		/*
+ 		this.addRecipe(new ItemStack(Block.jackOLantern, 1), new Object[]{"A", "B", Character.valueOf('A'), Block.pumpkin, Character.valueOf('B'), Block.torch});
+ 		this.addRecipe(new ItemStack(Item.minecartWithChest, 1), new Object[]{"A", "B", Character.valueOf('A'), Block.chest, Character.valueOf('B'), Item.minecart});
+ 		this.addRecipe(new ItemStack(Item.minecartWithFurnace, 1), new Object[]{"A", "B", Character.valueOf('A'), Block.furnace, Character.valueOf('B'), Item.minecart});
+@@ -81,12 +86,16 @@
  		this.addRecipe(new ItemStack(Block.dispenser, 1), new Object[]{"###", "#X#", "#R#", Character.valueOf('#'), Block.cobblestone, Character.valueOf('X'), Item.bow, Character.valueOf('R'), Item.redstone});
  		this.addRecipe(new ItemStack(Block.piston, 1), new Object[]{"TTT", "#X#", "#R#", Character.valueOf('#'), Block.cobblestone, Character.valueOf('X'), Item.ironIngot, Character.valueOf('R'), Item.redstone, Character.valueOf('T'), Block.planks});
  		this.addRecipe(new ItemStack(Block.stickyPiston, 1), new Object[]{"S", "P", Character.valueOf('S'), Item.slimeBall, Character.valueOf('P'), Block.piston});
@@ -4945,7 +5582,7 @@
  		String var3 = "";
  		int var4 = 0;
  		int var5 = 0;
-@@ -174,5 +187,39 @@
+@@ -174,5 +183,39 @@
  
  	public List getRecipeList() {
  		return this.recipes;
@@ -4968,17 +5605,17 @@
 +		List<Triplet<String, Boolean, CraftingRecipe>> out = new ArrayList<>();
 +		for(String key : recipes.keySet()) {
 +			CraftingRecipe recipe = recipes.get(key);
-+			boolean include = false;
++			int partialCount = 0;
 +			int count = 0;
 +			if(!recipe.byHand && !extended) continue;
 +			for (ItemStack item : recipe.inputs) {
 +				int c = items.getOrDefault(stackHash(item.getItem().itemID,item.getItemDamage()),0);
 +				if(c > 0)
-+					include = true;
++					partialCount++;
 +				if(c >= item.count)
 +					count++;
 +			}
-+			if(include) {
++			if(partialCount > 0) {
 +				out.add(new Triplet<>(key,count == recipe.inputs.size(),recipe));
 +			}
 +		}
@@ -5787,7 +6424,7 @@
  
  public abstract class NetHandler {
  	public abstract boolean isServerHandler();
-@@ -257,6 +207,14 @@
+@@ -257,6 +207,18 @@
  	}
  
  	public void handleDoorChange(Packet61DoorChange var1) {
@@ -5799,6 +6436,10 @@
 +	}
 +
 +	public void handleNoClip(Packet108NoClip var1) {
++		this.registerPacket(var1);
++	}
++
++	public void handleCraft(Packet109Craft var1) {
  		this.registerPacket(var1);
  	}
  }
@@ -5854,7 +6495,7 @@
  				this.motionY *= (double)0.95F;
 --- net/minecraft/client/gui/container/InventoryScreen.java
 +++ net/minecraft/client/gui/container/InventoryScreen.java
-@@ -3,74 +3,205 @@
+@@ -3,74 +3,210 @@
  import net.minecraft.client.gui.AchievementScreen;
  import net.minecraft.client.gui.component.GuiButton;
  import net.minecraft.client.gui.stats.StatsScreen;
@@ -5873,6 +6514,7 @@
  import net.minecraft.game.stats.achievement.AchievementList;
 +import net.minecraft.game.world.block.Block;
 +import net.minecraft.network.packet.Packet107CreativeSetSlot;
++import net.minecraft.network.packet.Packet109Craft;
 +import net.minecraft.util.Pair;
 +import net.minecraft.util.StringTranslate;
 +import net.minecraft.util.Triplet;
@@ -5954,6 +6596,7 @@
 +			GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
 +			GL11.glEnable(GL12.GL_RESCALE_NORMAL);
 +			for(int i=0; i < Math.min(16,recipes.size()); i++) {
++				if(i + getInterfaceOffset() >= recipes.size()) break;
 +				Triplet<String, Boolean, CraftingRecipe> recipe = recipes.get(i+getInterfaceOffset());
 +				if(recipe == null) break;
 +				int x = ((i%4)*18)+53;
@@ -5997,10 +6640,12 @@
  
  	protected void drawGuiContainerBackgroundLayer(float var1) {
 -		int var2 = this.mc.textureRegistry.getTexture("/gui/inventory.png");
-+		if(inventorySlots instanceof PlayerContainerCreative) {
-+			int wheel = Math.min(1,Math.max(-1,Mouse.getDWheel()));
-+			if (wheel != 0) {
-+				((PlayerContainerCreative) inventorySlots).setPage(((PlayerContainerCreative) inventorySlots).page-wheel);
++		int wheel = Math.min(1,Math.max(-1,Mouse.getDWheel()));
++		if (wheel != 0) {
++			if(selectedInterface == 0 && inventorySlots instanceof PlayerContainerCreative) {
++				((PlayerContainerCreative) inventorySlots).setPage(((PlayerContainerCreative) inventorySlots).page - wheel);
++			} else if(selectedInterface == 1) {
++				this.craftScroll = Math.min(getScrollMax(),Math.max(0,this.craftScroll-wheel));
 +			}
 +		}
 +		int var2 = selectedInterface == 0 ? this.mc.textureRegistry.getTexture("/gui/inventory.png") : this.mc.textureRegistry.getTexture("/gui/crafting.png");
@@ -6082,12 +6727,13 @@
 +			GL11.glDisable(GL12.GL_RESCALE_NORMAL);
 +		} else if(selectedInterface == 1) {
 +			// 8,72
-+			this.drawGradientRect(var3 + 124,var4 + 7 + craftScroll,(var3 + 124) + 8,(var4 + 7 + craftScroll) + 8,0xffe8e8e8,0xffe8e8e8);
++			float divider = getScrollMax() == 0 ? 0F : 64F/(float)getScrollMax();
++			this.drawGradientRect(var3 + 124,var4 + 7 + Math.round(craftScroll * divider),(var3 + 124) + 8,(var4 + 7 + Math.round(craftScroll * divider)) + 8,0xffe8e8e8,0xffe8e8e8);
 +		}
  	}
  
  	protected void actionPerformed(GuiButton var1) {
-@@ -82,5 +213,136 @@
+@@ -82,5 +218,150 @@
  			this.mc.displayGuiScreen(new StatsScreen(this, this.mc.statFileWriter));
  		}
  
@@ -6119,19 +6765,23 @@
 +		int var4 = (this.height - this.ySize) / 2;
 +		// var3 + 124,var4 + 7 + craftScroll,(var3 + 124) + 8,(var4 + 7 + craftScroll) + 7
 +		if(selectedInterface == 1) {
-+			if (var1 >= var3 + 124 && var1 < (var3 + 124) + 8 && var2 >= var4 + 7 + craftScroll && var2 <= (var4 + 7 + craftScroll) + 7) {
++			float divider = getScrollMax() == 0 ? 0F : 64F/(float)getScrollMax();
++			if (var1 >= var3 + 124 && var1 < (var3 + 124) + 8 && var2 >= var4 + 7 + (craftScroll*divider) && var2 <= (var4 + 7 + (craftScroll*divider)) + 7) {
 +				craftDrag = true;
 +				return;
 +			}
-+			for(int i=0; i < Math.min(16,recipes.size()); i++) {
-+				Triplet<String, Boolean, CraftingRecipe> recipe = recipes.get(i + getInterfaceOffset());
-+				if (recipe == null) break;
-+				int x = ((i % 4) * 18) + 53;
-+				int y = 8 + ((i / 4) * 18);
-+				if(var1 >= var3+x-1 && var1 <= var3+x+16 && var2 >= var4+y-1 && var2 <= var4+y+16) {
-+					if(recipe.middle)
-+						craft(recipe.left,recipe.right);
-+					break;
++			if(recipes != null) {
++				for (int i = 0; i < Math.min(16, recipes.size()); i++) {
++					if(i + getInterfaceOffset() >= recipes.size()) break;
++					Triplet<String, Boolean, CraftingRecipe> recipe = recipes.get(i + getInterfaceOffset());
++					if (recipe == null) break;
++					int x = ((i % 4) * 18) + 53;
++					int y = 8 + ((i / 4) * 18);
++					if (var1 >= var3 + x - 1 && var1 <= var3 + x + 16 && var2 >= var4 + y - 1 && var2 <= var4 + y + 16) {
++						if (recipe.middle)
++							craft(recipe.left, recipe.right);
++						break;
++					}
 +				}
 +			}
 +		}
@@ -6195,13 +6845,15 @@
 +		if(var3 == 0) {
 +			this.craftDrag = false;
 +		} else if(this.craftDrag){
-+			this.craftScroll = Math.min(72-8,Math.max(0,var2 - (var5 + 7) - 4));
++			int offset = var2 - (var5 + 7) - 4;
++			float divider = getScrollMax() == 0 ? 0F : 64F/(float)getScrollMax();
++			this.craftScroll = Math.min(getScrollMax(),Math.max(0,Math.round(offset/divider)));
 +		}
 +		super.mouseMovedOrUp(var1, var2, var3);
 +	}
 +
 +	private int getInterfaceOffset() {
-+		return 0;
++		return craftScroll*4;
 +	}
 +
 +	public void craft(String name, CraftingRecipe recipe) {
@@ -6218,10 +6870,18 @@
 +		if(this.mc.thePlayer.inventory.getItemStack() == null)
 +			this.mc.thePlayer.inventory.setItemStack(recipe.result.copy());
 +		else {
-+			ItemStack stack = recipe.result.copy();
++			ItemStack stack = this.mc.thePlayer.inventory.getItemStack().copy();
 +			stack.count += recipe.result.count;
 +			this.mc.thePlayer.inventory.setItemStack(stack);
 +		}
++		if(this.mc.theWorld.remoteWorld) {
++			((ClientNetPlayerEntity)this.mc.thePlayer).sendQueue.addToSendQueue(new Packet109Craft(name));
++		}
++	}
++
++	public int getScrollMax() {
++		if(recipes == null) return 0;
++		return (int)Math.ceil((float)Math.max(0,recipes.size()-16)/4F);
  	}
  }
 --- net/minecraft/game/item/HoeItem.java
@@ -6735,6 +7395,50 @@
 +        this.inputs = inputs;
 +    }
 +}
+--- /dev/null
++++ net/minecraft/client/model/mechanical/WindMillModel.java
+@@ -1,0 +1,41 @@
++package net.minecraft.client.model.mechanical;
++
++import net.minecraft.client.model.EntityModel;
++import net.minecraft.client.model.ModelRenderer;
++
++public class WindMillModel extends EntityModel {
++    public ModelRenderer windMillComponents[];
++
++    public WindMillModel()
++    {
++        windMillComponents = new ModelRenderer[8];
++        for(int i = 0; i < 4; i++)
++        {
++            windMillComponents[i] = new ModelRenderer(0, 0);
++            windMillComponents[i].addBox(2.5F, -2F, -2F, 97, 4, 4);
++            windMillComponents[i].setRotationPoint(0.0F, 0.0F, 0.0F);
++            windMillComponents[i].rotateAngleZ = (3.141593F * (float)(i - 4)) / 2.0F;
++        }
++
++        for(int j = 4; j < 8; j++)
++        {
++            windMillComponents[j] = new ModelRenderer(0, 15);
++            windMillComponents[j].addBox(15F, 1.75F, 1.0F, 84, 16, 1);
++            windMillComponents[j].setRotationPoint(0.0F, 0.0F, 0.0F);
++            //windMillComponents[j].rotateAngleY = -0.2617994F;
++            windMillComponents[j].rotateAngleZ = (3.141593F * (float)j) / 2.0F;
++        }
++
++    }
++
++    public void render(float var1, float var2, float var3, float var4, float var5, float var6) {
++        for(int i = 0; i < 4; i++)
++        {
++            windMillComponents[i].render(var6);
++        }
++        for(int j = 4; j < 8; j++)
++        {
++            windMillComponents[j].render(var6);
++        }
++    }
++}
 --- net/minecraft/game/entity/projectile/ArrowEntity.java
 +++ net/minecraft/game/entity/projectile/ArrowEntity.java
 @@ -268,7 +268,7 @@
@@ -6948,7 +7652,14 @@
  		for(var16 = 0; var16 < var15; ++var16) {
 --- net/minecraft/network/NetServerHandler.java
 +++ net/minecraft/network/NetServerHandler.java
-@@ -12,26 +12,7 @@
+@@ -7,31 +7,14 @@
+ import net.minecraft.game.entity.Entity;
+ import net.minecraft.game.entity.player.InventoryPlayer;
+ import net.minecraft.game.item.ItemStack;
++import net.minecraft.game.item.recipe.CraftingManager;
++import net.minecraft.game.item.recipe.CraftingRecipe;
+ import net.minecraft.game.item.slot.Slot;
+ import net.minecraft.game.physics.AxisAlignedBB;
  import net.minecraft.game.world.BlockPos;
  import net.minecraft.game.world.block.tileentity.SignTileEntity;
  import net.minecraft.game.world.block.tileentity.TileEntity;
@@ -6976,7 +7687,7 @@
  import net.minecraft.server.MinecraftServer;
  import net.minecraft.server.command.ICommandListener;
  import net.minecraft.server.player.ServerPlayerEntity;
-@@ -213,7 +194,7 @@
+@@ -213,7 +196,7 @@
  			var17 = var9 - this.playerEntity.posZ;
  			var19 = var13 * var13 + var15 * var15 + var17 * var17;
  			boolean var23 = false;
@@ -6985,7 +7696,7 @@
  				var23 = true;
  				logger.warning(this.playerEntity.username + " moved wrongly!");
  				System.out.println("Got position " + var5 + ", " + var7 + ", " + var9);
-@@ -228,7 +209,7 @@
+@@ -228,7 +211,7 @@
  			}
  
  			AxisAlignedBB var25 = this.playerEntity.boundingBox.copy().expand((double)var21, (double)var21, (double)var21).addCoord(0.0D, -0.55D, 0.0D);
@@ -6994,13 +7705,17 @@
  				if(var15 >= -0.03125D) {
  					++this.playerInAirTime;
  					if(this.playerInAirTime > 80) {
-@@ -608,6 +589,18 @@
+@@ -608,6 +591,38 @@
  			}
  		}
  
 +	}
 +
 +	public void handleCreativeSetSlot(Packet107CreativeSetSlot packet) {
++		if(!this.playerEntity.worldObj.isCreativeWorld()) {
++			logger.warning("Player " + this.playerEntity.username + "attempted to use the CreativeSetSlot packet to retrieve an item in a non creative world (hacking?)");
++			return;
++		}
 +		if(packet.slotId == -1) {
 +			this.playerEntity.inventory.setItemStack(packet.stack);
 +		} else {
@@ -7010,6 +7725,22 @@
 +
 +	public void handleNoClip(Packet108NoClip packet) {
 +		this.playerEntity.noClip = packet.noClip;
++	}
++
++	public void handleCraft(Packet109Craft packet) {
++		CraftingRecipe recipe = CraftingManager.getInstance().recipes.get(packet.name);
++		for(ItemStack stack : recipe.inputs) {
++			for(int i=0; i < stack.count; i++) {
++				this.playerEntity.inventory.consumeInventoryItem(stack.id,stack.getItemDamage());
++			}
++		}
++		if(this.playerEntity.inventory.getItemStack() == null)
++			this.playerEntity.inventory.setItemStack(recipe.result.copy());
++		else {
++			ItemStack stack = this.playerEntity.inventory.getItemStack().copy();
++			stack.count += recipe.result.count;
++			this.playerEntity.inventory.setItemStack(stack);
++		}
  	}
  
  	public boolean isServerHandler() {
@@ -10328,6 +11059,129 @@
 +		this.creative = creative;
  	}
  }
+--- /dev/null
++++ net/minecraft/game/entity/mechanical/WindMillEntity.java
+@@ -1,0 +1,120 @@
++package net.minecraft.game.entity.mechanical;
++
++import com.mojang.nbt.CompoundTag;
++import net.minecraft.game.entity.Entity;
++import net.minecraft.game.item.Item;
++import net.minecraft.game.physics.AxisAlignedBB;
++import net.minecraft.game.world.World;
++import net.minecraft.game.world.block.Block;
++import net.minecraft.game.world.block.mechanical.AxleBlock;
++
++public class WindMillEntity extends Entity {
++    public boolean align;
++    public float rotation = 0;
++    public boolean providingPower = false;
++
++    public WindMillEntity(World world) {
++        super(world);
++        setSize(12.8F, 12.8F);
++    }
++
++    public WindMillEntity(World world, double x, double y, double z, boolean align)
++    {
++        this(world);
++        this.setPosition(x, y, z);
++        this.align = align;
++        applyAlignment();
++    }
++
++    public void applyAlignment() {
++        if(align)
++        {
++            boundingBox.setBounds(posX - 0.40000000596046448D, posY - 6.4000000953674316D, posZ - 6.4000000953674316D, posX + 0.40000000596046448D, posY + 6.4000000953674316D, posZ + 6.4000000953674316D);
++        } else
++        {
++            boundingBox.setBounds(posX - 6.4000000953674316D, posY - 6.4000000953674316D, posZ - 0.40000000596046448D, posX + 6.4000000953674316D, posY + 6.4000000953674316D, posZ + 0.40000000596046448D);
++        }
++    }
++
++    public float getEyeHeight() {
++        return height / 2.0F;
++    }
++
++    @Override
++    public AxisAlignedBB getCollisionBox(Entity var1) {
++        return var1.getBoundingBox();
++    }
++
++    @Override
++    public AxisAlignedBB getBoundingBox() {
++        return boundingBox;
++    }
++
++    public boolean canBePushed() {
++        return false;
++    }
++
++    public boolean canBeCollidedWith()
++    {
++        return !isDead;
++    }
++
++    @Override
++    public void onUpdate() {
++        super.onUpdate();
++        rotation += 1F;
++        if(rotation > 360F) {
++            rotation -= 360F;
++        }
++        int iCenterI = (int)(posX - 0.5D);
++        int iCenterJ = (int)(posY - 0.5D);
++        int iCenterK = (int)(posZ - 0.5D);
++        if(worldObj.getBlockId(iCenterI, iCenterJ, iCenterK) == 0) {
++            hurt(null,0);
++        }
++        if(!providingPower)
++        {
++            providingPower = true;
++            ((AxleBlock) Block.axle).setPowerLevel(worldObj, iCenterI, iCenterJ, iCenterK, 4);
++        }
++    }
++
++    public boolean hurt(Entity entity, int i)
++    {
++        if(worldObj.remoteWorld || isDead)
++        {
++            return true;
++        } else if(!isDead)
++        {
++            if(providingPower)
++            {
++                int iCenterI = (int)(posX - 0.5D);
++                int iCenterJ = (int)(posY - 0.5D);
++                int iCenterK = (int)(posZ - 0.5D);
++                providingPower = false;
++                ((AxleBlock) Block.axle).setPowerLevel(worldObj, iCenterI, iCenterJ, iCenterK, 0);
++            }
++            dropItemWithOffset(Item.windMill.itemID, 1, 0.0F);
++            setEntityDead();
++        }
++        return true;
++    }
++
++    @Override
++    protected void entityInit() {
++
++    }
++
++    @Override
++    protected void readEntityFromNBT(CompoundTag var1) {
++        this.align = var1.getBoolean("WindMillAlignment");
++        this.rotation = var1.getFloat("WindMillRotation");
++        applyAlignment();
++    }
++
++    @Override
++    protected void writeEntityToNBT(CompoundTag var1) {
++        var1.setBoolean("WindMillAlignment",align);
++        var1.setFloat("WindMillRotation",rotation);
++    }
++}
 --- net/minecraft/game/item/recipe/ShapedRecipes.java
 +++ /dev/null
 @@ -1,82 +1,0 @@
@@ -10413,6 +11267,48 @@
 -		return this.width * this.height;
 -	}
 -}
+--- /dev/null
++++ net/minecraft/network/packet/Packet109Craft.java
+@@ -1,0 +1,39 @@
++package net.minecraft.network.packet;
++
++import net.minecraft.network.NetHandler;
++
++import java.io.DataInputStream;
++import java.io.DataOutputStream;
++import java.io.IOException;
++
++public class Packet109Craft extends Packet {
++    public String name;
++
++    public Packet109Craft() {
++
++    }
++
++    public Packet109Craft(String name) {
++        this.name = name;
++    }
++
++    @Override
++    public void readPacketData(DataInputStream var1) throws IOException {
++        this.name = readString(var1,128);
++    }
++
++    @Override
++    public void writePacketData(DataOutputStream var1) throws IOException {
++        writeString(this.name,var1);
++    }
++
++    @Override
++    public void processPacket(NetHandler var1) {
++        var1.handleCraft(this);
++    }
++
++    @Override
++    public int getPacketSize() {
++        return this.name.length();
++    }
++}
 --- net/minecraft/client/render/texture/TextureCompassFX.java
 +++ net/minecraft/client/render/texture/TextureCompassFX.java
 @@ -20,8 +20,8 @@
@@ -10742,6 +11638,34 @@
 -		return this.input.size();
 -	}
 -}
+--- /dev/null
++++ net/minecraft/game/item/mechanical/WindMillItem.java
+@@ -1,0 +1,25 @@
++package net.minecraft.game.item.mechanical;
++
++import net.minecraft.game.entity.mechanical.WindMillEntity;
++import net.minecraft.game.entity.player.PlayerEntity;
++import net.minecraft.game.item.Item;
++import net.minecraft.game.item.ItemStack;
++import net.minecraft.game.world.World;
++import net.minecraft.game.world.block.Block;
++
++public class WindMillItem extends Item {
++    public WindMillItem(int var1) {
++        super(var1);
++    }
++
++    @Override
++    public boolean onItemUse(ItemStack var1, PlayerEntity var2, World var3, int var4, int var5, int var6, int var7) {
++        int id = var3.getBlockId(var4, var5, var6);
++        int metadata = var3.getBlockMetadata(var4,var5,var6);
++        if(id == Block.axle.blockID && !var3.remoteWorld) {
++            var3.entityJoinedWorld(new WindMillEntity(var3, (float)var4 + 0.5F, (float)var5 + 0.5F, (float)var6 + 0.5, (metadata & 3) == 2));
++            var1.count--;
++        }
++        return false;
++    }
++}
 --- net/minecraft/client/gui/MultiplayerScreen.java
 +++ net/minecraft/client/gui/MultiplayerScreen.java
 @@ -15,6 +15,7 @@
@@ -10838,18 +11762,19 @@
  import javax.xml.parsers.DocumentBuilder;
  import javax.xml.parsers.DocumentBuilderFactory;
  import org.w3c.dom.Document;
-@@ -17,6 +17,10 @@
+@@ -17,6 +17,11 @@
  	public File resourcesFolder;
  	private Minecraft mc;
  	private boolean closing = false;
 +	public static boolean titleMusicReady = false;
++	private static final String MC_RESOURCE_URL = "https://resources.download.minecraft.net/";
 +
 +	public static int progress = 0;
 +	public static int progressMax = 0;
  
  	public ThreadDownloadResources(File var1, Minecraft var2) {
  		this.mc = var2;
-@@ -30,13 +34,15 @@
+@@ -30,13 +35,15 @@
  
  	public void run() {
  		try {
@@ -10866,7 +11791,7 @@
  				for(int var7 = 0; var7 < var5.getLength(); ++var7) {
  					Node var8 = var5.item(var7);
  					if(var8.getNodeType() == 1) {
-@@ -50,8 +56,27 @@
+@@ -50,8 +57,38 @@
  							}
  						}
  					}
@@ -10875,6 +11800,13 @@
  			}
 +			progress = -1;
 +			progressMax = 0;
++
++			this.downloadAndInstallResourceTalon(new URL(MC_RESOURCE_URL + "3f/3fe4c878450d4dc2bf3ac304e547f20d4efabad8"), "talon_creative/biomefest.ogg", 4271435, 2);
++			this.downloadAndInstallResourceTalon(new URL(MC_RESOURCE_URL + "59/591f41a2c5f53bcc60d7ded982fe29e76223a8ca"), "talon_creative/blindspots.ogg", 3704574, 2);
++			this.downloadAndInstallResourceTalon(new URL(MC_RESOURCE_URL + "4f/4f8c3f9b4f290f63c78bf3bbaad16906a3ccff29"), "talon_creative/hauntmuskie.ogg", 3834148, 2);
++			this.downloadAndInstallResourceTalon(new URL(MC_RESOURCE_URL + "46/4664de25eb2bfc88ebbd638cfae6934dd968ceaa"), "talon_creative/ariamath.ogg", 3668042, 2);
++			this.downloadAndInstallResourceTalon(new URL(MC_RESOURCE_URL + "45/45cb6cbbff2d7fc1daefbd85b031fd9dcfc70e7b"), "talon_creative/dreiton.ogg", 5532231, 2);
++			this.downloadAndInstallResourceTalon(new URL(MC_RESOURCE_URL + "62/6254527d626a2c7d80901cc2e62dce3ba4bd81f6"), "talon_creative/taswell.ogg", 5468843, 2);
 +
 +			downloadAndInstallResourceTalon(new URL("https://raw.githubusercontent.com/TalonFloof/OrderOfTheTalon/main/assets/sound/ambient/weather/rain1.ogg"),"sound/ambient/weather/quiet_rain1.ogg",291497,0);
 +			downloadAndInstallResourceTalon(new URL("https://raw.githubusercontent.com/TalonFloof/OrderOfTheTalon/main/assets/sound/ambient/weather/rain2.ogg"),"sound/ambient/weather/quiet_rain2.ogg",290830,0);
@@ -10885,6 +11817,10 @@
 +			downloadAndInstallResourceTalon(new URL("https://raw.githubusercontent.com/TalonFloof/OrderOfTheTalon/main/assets/sound/ambient/weather/rain7.ogg"),"sound/ambient/weather/quiet_rain7.ogg",279191,0);
 +			downloadAndInstallResourceTalon(new URL("https://raw.githubusercontent.com/TalonFloof/OrderOfTheTalon/main/assets/sound/ambient/weather/rain8.ogg"),"sound/ambient/weather/quiet_rain8.ogg",275569,0);
 +
++			this.downloadAndInstallResourceTalon(new URL(MC_RESOURCE_URL + "c1/c157c56846f0e50620f808fecd9d069423dd6c41"), "talon_title/mutation.ogg", 1744657, 2);
++			this.downloadAndInstallResourceTalon(new URL(MC_RESOURCE_URL + "78/783ddccf4681a0c50d3e651f4e6ac27a0f4ea76f"), "talon_title/moogcity2.ogg", 1809290, 2);
++			this.downloadAndInstallResourceTalon(new URL(MC_RESOURCE_URL + "87/87722a59c8d488370f3d430cd4c97a3161081785"), "talon_title/beginning2.ogg", 1724614, 2);
++			this.downloadAndInstallResourceTalon(new URL(MC_RESOURCE_URL + "15/15f38314274e759c44f50ac641d11bde12474a25"), "talon_title/floatingtrees.ogg", 2017245, 2);
 +			downloadAndInstallResourceTalon(new URL("https://raw.githubusercontent.com/TalonFloof/OrderOfTheTalon/main/assets/music/intro.ogg"),"talon_title/intro.ogg",3724582,2);
 +			downloadAndInstallResourceTalon(new URL("https://raw.githubusercontent.com/TalonFloof/OrderOfTheTalon/main/assets/music/equinoxe.ogg"),"talon_title/equinoxe.ogg",1506686,2);
 +			downloadAndInstallResourceTalon(new URL("https://raw.githubusercontent.com/TalonFloof/OrderOfTheTalon/main/assets/music/ki.ogg"),"talon_title/ki.ogg",1185541,2);
@@ -10894,7 +11830,7 @@
  		} catch (Exception var13) {
  			this.loadResource(this.resourcesFolder, "");
  			var13.printStackTrace();
-@@ -85,7 +110,7 @@
+@@ -85,7 +122,7 @@
  			int var6 = var2.indexOf("/");
  			String var7 = var2.substring(0, var6);
  			if(!var7.equals("sound") && !var7.equals("newsound")) {
@@ -10903,7 +11839,7 @@
  					return;
  				}
  			} else if(var5 != 0) {
-@@ -97,6 +122,34 @@
+@@ -97,6 +134,34 @@
  				var8.getParentFile().mkdirs();
  				String var9 = var2.replaceAll(" ", "%20");
  				this.downloadResource(new URL(var1, var9), var8, var3);
@@ -11275,7 +12211,15 @@
  
 --- net/minecraft/game/item/Item.java
 +++ net/minecraft/game/item/Item.java
-@@ -12,115 +12,119 @@
+@@ -4,6 +4,7 @@
+ import net.minecraft.game.entity.Entity;
+ import net.minecraft.game.entity.LivingEntity;
+ import net.minecraft.game.entity.player.PlayerEntity;
++import net.minecraft.game.item.mechanical.WindMillItem;
+ import net.minecraft.game.stats.StatCollector;
+ import net.minecraft.game.stats.StatList;
+ import net.minecraft.game.world.World;
+@@ -12,115 +13,121 @@
  
  public class Item {
  	protected static Random random = new Random();
@@ -11495,6 +12439,8 @@
 +	public static Item cookedBeef = (new FoodItem(16384+105, 8, true)).setTextureCoord(10, 6).setName("beefCooked");
 +	public static Item rawChicken = (new FoodItem(16384+106, 1, true)).setTextureCoord(9, 7).setName("chickenRaw");
 +	public static Item cookedChicken = (new FoodItem(16384+107, 5, true)).setTextureCoord(10, 7).setName("chickenCooked");
++	public static Item gear = (new Item(16384+108)).setTextureCoord(6,6).setName("gear");
++	public static Item windMill = (new WindMillItem(16384+109).setTextureCoord(2,15).setName("windMill"));
 +	public static Item disc13 = (new MusicDiscItem(16384+2000, "13")).setTextureCoord(0, 15).setName("record");
 +	public static Item discCat = (new MusicDiscItem(16384+2001, "cat")).setTextureCoord(1, 15).setName("record");
  	public final int itemID;
@@ -11503,7 +12449,7 @@
  	private int maxDamage = 0;
  	protected int textureIndex;
  	protected boolean toolGrip = false;
-@@ -129,12 +133,12 @@
+@@ -129,12 +136,12 @@
  	private String name;
  
  	protected Item(int var1) {
@@ -11519,7 +12465,7 @@
  	}
  
  	public Item setTextureCoord(int var1) {
-@@ -148,7 +152,7 @@
+@@ -148,7 +155,7 @@
  	}
  
  	public Item setTextureCoord(int var1, int var2) {
@@ -11528,7 +12474,7 @@
  		return this;
  	}
  
-@@ -284,5 +288,9 @@
+@@ -284,5 +291,9 @@
  
  	static {
  		StatList.initItems();
@@ -11540,7 +12486,33 @@
  }
 --- net/minecraft/client/render/RenderManager.java
 +++ net/minecraft/client/render/RenderManager.java
-@@ -164,6 +164,10 @@
+@@ -43,6 +43,7 @@
+ import net.minecraft.client.render.entity.RenderSpider;
+ import net.minecraft.client.render.entity.RenderSquid;
+ import net.minecraft.client.render.entity.RenderWolf;
++import net.minecraft.client.render.entity.mechanical.WindMillRenderer;
+ import net.minecraft.game.entity.Entity;
+ import net.minecraft.game.entity.LivingEntity;
+ import net.minecraft.game.entity.animal.ChickenEntity;
+@@ -51,6 +52,7 @@
+ import net.minecraft.game.entity.animal.SheepEntity;
+ import net.minecraft.game.entity.animal.SquidEntity;
+ import net.minecraft.game.entity.animal.WolfEntity;
++import net.minecraft.game.entity.mechanical.WindMillEntity;
+ import net.minecraft.game.entity.misc.FallingBlockEntity;
+ import net.minecraft.game.entity.misc.FishEntity;
+ import net.minecraft.game.entity.misc.ItemEntity;
+@@ -124,6 +126,9 @@
+ 		this.entityRenderMap.put(BoatEntity.class, new RenderBoat());
+ 		this.entityRenderMap.put(FishEntity.class, new RenderFish());
+ 		this.entityRenderMap.put(LightningBoltEntity.class, new RenderLightningBolt());
++
++		this.entityRenderMap.put(WindMillEntity.class, new WindMillRenderer());
++
+ 		Iterator var1 = this.entityRenderMap.values().iterator();
+ 
+ 		while(var1.hasNext()) {
+@@ -164,6 +169,10 @@
  		} else {
  			this.playerViewY = var4.prevRotationYaw + (var4.rotationYaw - var4.prevRotationYaw) * var6;
  			this.playerViewX = var4.prevRotationPitch + (var4.rotationPitch - var4.prevRotationPitch) * var6;
@@ -11664,7 +12636,24 @@
  import net.minecraft.client.controller.CreativePlayerController;
  import net.minecraft.client.controller.PlayerController;
  import net.minecraft.client.effect.EffectRenderer;
-@@ -74,8 +78,11 @@
+@@ -42,15 +46,7 @@
+ import net.minecraft.client.render.color.ColorizerFoliage;
+ import net.minecraft.client.render.color.ColorizerGrass;
+ import net.minecraft.client.render.color.ColorizerWater;
+-import net.minecraft.client.render.texture.TextureCompassFX;
+-import net.minecraft.client.render.texture.TextureFlamesFX;
+-import net.minecraft.client.render.texture.TextureLavaFX;
+-import net.minecraft.client.render.texture.TextureLavaFlowFX;
+-import net.minecraft.client.render.texture.TexturePackList;
+-import net.minecraft.client.render.texture.TexturePortalFX;
+-import net.minecraft.client.render.texture.TextureWatchFX;
+-import net.minecraft.client.render.texture.TextureWaterFX;
+-import net.minecraft.client.render.texture.TextureWaterFlowFX;
++import net.minecraft.client.render.texture.*;
+ import net.minecraft.client.sound.SoundManager;
+ import net.minecraft.game.MinecraftException;
+ import net.minecraft.game.entity.LivingEntity;
+@@ -74,8 +70,11 @@
  import net.minecraft.game.world.save.SaveFormat;
  import net.minecraft.game.world.save.SaveHandler;
  import net.minecraft.network.NetClientHandler;
@@ -11676,7 +12665,7 @@
  import org.lwjgl.LWJGLException;
  import org.lwjgl.input.Controllers;
  import org.lwjgl.input.Keyboard;
-@@ -85,6 +92,9 @@
+@@ -85,6 +84,9 @@
  import org.lwjgl.opengl.GL11;
  import org.lwjgl.util.glu.GLU;
  
@@ -11686,7 +12675,7 @@
  public abstract class Minecraft implements Runnable {
  	public static byte[] field_28006_b = new byte[10485760];
  	private static Minecraft theMinecraft;
-@@ -167,6 +177,13 @@
+@@ -167,6 +169,13 @@
  	public void onMinecraftCrash(UnexpectedThrowable var1) {
  		this.hasCrashed = true;
  		this.displayUnexpectedThrowable(var1);
@@ -11700,7 +12689,7 @@
  	}
  
  	public abstract void displayUnexpectedThrowable(UnexpectedThrowable var1);
-@@ -201,7 +218,9 @@
+@@ -201,7 +210,9 @@
  			Display.setDisplayMode(new DisplayMode(this.displayWidth, this.displayHeight));
  		}
  
@@ -11711,7 +12700,18 @@
  
  		try {
  			Display.create();
-@@ -529,7 +548,7 @@
+@@ -264,6 +275,10 @@
+ 		this.textureRegistry.registerTextureFX(new TextureLavaFlowFX());
+ 		this.textureRegistry.registerTextureFX(new TextureFlamesFX(0));
+ 		this.textureRegistry.registerTextureFX(new TextureFlamesFX(1));
++
++		this.textureRegistry.registerTextureFX(new TextureAxleFX(this,false));
++		//this.textureRegistry.registerTextureFX(new TextureAxleFX(this,true));
++
+ 		this.worldRenderer = new WorldRenderer(this, this.textureRegistry);
+ 		GL11.glViewport(0, 0, this.displayWidth, this.displayHeight);
+ 		this.effectRenderer = new EffectRenderer(this.theWorld, this.textureRegistry);
+@@ -529,7 +544,7 @@
  					}
  
  					if(this.thePlayer != null && this.thePlayer.isEntityInsideOpaqueBlock()) {
@@ -11720,7 +12720,7 @@
  					}
  
  					if(!this.skipRenderWorld) {
-@@ -640,6 +659,10 @@
+@@ -640,6 +655,10 @@
  	}
  
  	private void displayDebugInfo(long var1) {
@@ -11731,7 +12731,7 @@
  		long var3 = 16666666L;
  		if(this.prevFrameTime == -1L) {
  			this.prevFrameTime = System.nanoTime();
-@@ -737,7 +760,8 @@
+@@ -737,7 +756,8 @@
  			}
  
  			this.inGameHasFocus = false;
@@ -11741,7 +12741,7 @@
  		}
  	}
  
-@@ -1021,7 +1045,7 @@
+@@ -1021,7 +1041,7 @@
  												}
  
  												if(Keyboard.getEventKey() == Keyboard.KEY_F5) {
@@ -11750,7 +12750,7 @@
  												}
  
  												if(Keyboard.getEventKey() == Keyboard.KEY_F8) {
-@@ -1029,14 +1053,24 @@
+@@ -1029,14 +1049,24 @@
  												}
  
  												if(Keyboard.getEventKey() == this.gameSettings.keyBindInventory.keyCode) {
@@ -11777,7 +12777,7 @@
  													this.displayGuiScreen(new ChatScreen());
  												}
  											}
-@@ -1044,6 +1078,11 @@
+@@ -1044,6 +1074,11 @@
  											for(int var6 = 0; var6 < 9; ++var6) {
  												if(Keyboard.getEventKey() == Keyboard.KEY_1 + var6) {
  													this.thePlayer.inventory.currentItem = var6;
@@ -11789,7 +12789,7 @@
  												}
  											}
  
-@@ -1236,6 +1275,7 @@
+@@ -1236,6 +1271,7 @@
  	}
  
  	public void changeWorld(World var1, String var2, PlayerEntity var3) {
@@ -11797,18 +12797,20 @@
  		this.statFileWriter.func_27175_b();
  		this.statFileWriter.syncStats();
  		this.renderViewEntity = null;
-@@ -1361,8 +1401,9 @@
+@@ -1361,8 +1397,11 @@
  			this.sndManager.addMusic(var1, var2);
  		} else if(var4.equalsIgnoreCase("newmusic")) {
  			this.sndManager.addMusic(var1, var2);
 +		} else if(var4.equalsIgnoreCase("talon_title")) {
 +			this.sndManager.soundPoolTitleMusic.addSound(var1, var2);
++		} else if(var4.equalsIgnoreCase("talon_creative")) {
++			this.sndManager.soundPoolCreativeMusic.addSound(var1, var2);
  		}
 -
  	}
  
  	public OpenGlCapsChecker getOpenGlCapsChecker() {
-@@ -1450,15 +1491,17 @@
+@@ -1450,15 +1489,17 @@
  	}
  
  	public static void startMainThread(String var0, String var1, String var2) {
@@ -11828,7 +12830,7 @@
  		Thread var8 = new Thread(var7, "Minecraft main thread");
  		var8.setPriority(10);
  		var7.minecraftUri = "www.minecraft.net";
-@@ -1516,8 +1559,40 @@
+@@ -1516,8 +1557,40 @@
  
  	public boolean lineIsCommand(String var1) {
  		if(var1.startsWith("/")) {
@@ -12479,7 +13481,7 @@
  				var2[var3] = (new StatCrafting(var1 + var3, var4, var3)).registerStat();
 --- net/minecraft/game/world/block/WorkbenchBlock.java
 +++ net/minecraft/game/world/block/WorkbenchBlock.java
-@@ -4,14 +4,16 @@
+@@ -4,22 +4,26 @@
  import net.minecraft.game.world.World;
  import net.minecraft.game.world.material.Material;
  
@@ -12498,6 +13500,18 @@
  	}
  
  	public boolean blockActivated(World var1, int var2, int var3, int var4, PlayerEntity var5) {
+-		if(var1.remoteWorld) {
++		var5.displayWorkbenchGUI(var2, var3, var4);
++		return true;
++		/*if(var1.remoteWorld) {
+ 			return true;
+ 		} else {
+ 			var5.displayWorkbenchGUI(var2, var3, var4);
+ 			return true;
+-		}
++		}*/
+ 	}
+ }
 --- net/minecraft/server/PlayerDataHandler.java
 +++ /dev/null
 @@ -1,9 +1,0 @@
@@ -12980,6 +13994,14 @@
  				}
  			} else {
  				this.curBlockDamage = 0.0F;
+@@ -120,6 +123,6 @@
+ 
+ 	public void updateController() {
+ 		this.prevBlockDamage = this.curBlockDamage;
+-		this.mc.sndManager.playRandomMusicIfReady();
++		this.mc.sndManager.playRandomMusicIfReady(this.mc.theWorld.isCreativeWorld());
+ 	}
+ }
 --- net/minecraft/game/world/block/SpongeBlock.java
 +++ net/minecraft/game/world/block/SpongeBlock.java
 @@ -3,10 +3,12 @@
@@ -13017,18 +14039,35 @@
  
  					for(int var6 = 0; var6 < var5.size(); ++var6) {
  						this.getTileEntityInfo((TileEntity)var5.get(var6));
-@@ -268,6 +269,11 @@
- 			EntityTracker var1 = this.mcServer.getEntityTracker(this.dimension);
- 			var1.sendPacketToTrackedPlayers(this, new Packet18Animation(this, 1));
- 		}
-+
-+	}
-+
-+	@Override
-+	public void theMostUselessAbstractMethodEver() {
+@@ -271,6 +272,11 @@
  
  	}
  
++	@Override
++	public void theMostUselessAbstractMethodEver() {
++
++	}
++
+ 	public void func_22068_s() {
+ 	}
+ 
+@@ -318,11 +324,11 @@
+ 	}
+ 
+ 	public void displayWorkbenchGUI(int var1, int var2, int var3) {
+-		this.getNextWidowId();
+-		this.playerNetServerHandler.sendPacket(new Packet100OpenWindow(this.currentWindowId, 1, "Crafting", 9));
+-		this.craftingInventory = new WorkbenchContainer(this.inventory, this.worldObj, var1, var2, var3);
+-		this.craftingInventory.windowId = this.currentWindowId;
+-		this.craftingInventory.onCraftGuiOpened(this);
++		//this.getNextWidowId();
++		//this.playerNetServerHandler.sendPacket(new Packet100OpenWindow(this.currentWindowId, 1, "Crafting", 9));
++		//this.craftingInventory = new (this.inventory, this.worldObj, var1, var2, var3);
++		//this.craftingInventory.windowId = this.currentWindowId;
++		//this.craftingInventory.onCraftGuiOpened(this);
+ 	}
+ 
+ 	public void displayGUIChest(Inventory var1) {
 --- net/minecraft/game/world/terrain/OverworldChunkProvider.java
 +++ net/minecraft/game/world/terrain/OverworldChunkProvider.java
 @@ -1,8 +1,10 @@
@@ -13822,6 +14861,31 @@
  			this.motionY *= (double)0.98F;
  			this.motionX *= (double)var8;
  			this.motionZ *= (double)var8;
+--- net/minecraft/client/render/entity/RenderSnowball.java
++++ net/minecraft/client/render/entity/RenderSnowball.java
+@@ -2,6 +2,7 @@
+ 
+ import net.minecraft.client.render.Tessellator;
+ import net.minecraft.game.entity.Entity;
++import net.minecraft.util.SharedConstants;
+ import org.lwjgl.opengl.GL11;
+ import org.lwjgl.opengl.GL12;
+ 
+@@ -19,10 +20,10 @@
+ 		GL11.glScalef(0.5F, 0.5F, 0.5F);
+ 		this.loadTexture("/gui/items.png");
+ 		Tessellator var10 = Tessellator.instance;
+-		float var11 = (float)(this.itemIconIndex % 16 * 16 + 0) / 256.0F;
+-		float var12 = (float)(this.itemIconIndex % 16 * 16 + 16) / 256.0F;
+-		float var13 = (float)(this.itemIconIndex / 16 * 16 + 0) / 256.0F;
+-		float var14 = (float)(this.itemIconIndex / 16 * 16 + 16) / 256.0F;
++		float var11 = (float)(this.itemIconIndex % 32 * 16 + 0) / SharedConstants.ATLAS_SIZE;
++		float var12 = (float)(this.itemIconIndex % 32 * 16 + 16) / SharedConstants.ATLAS_SIZE;
++		float var13 = (float)(this.itemIconIndex / 32 * 16 + 0) / SharedConstants.ATLAS_SIZE;
++		float var14 = (float)(this.itemIconIndex / 32 * 16 + 16) / SharedConstants.ATLAS_SIZE;
+ 		float var15 = 1.0F;
+ 		float var16 = 0.5F;
+ 		float var17 = 0.25F;
 --- /dev/null
 +++ net/minecraft/util/Triplet.java
 @@ -1,0 +1,26 @@
@@ -14180,6 +15244,350 @@
  				return true;
  			} else {
  				return false;
+--- /dev/null
++++ net/minecraft/game/world/block/mechanical/AxleBlock.java
+@@ -1,0 +1,341 @@
++package net.minecraft.game.world.block.mechanical;
++
++import net.minecraft.client.render.RenderBlocks;
++import net.minecraft.game.entity.misc.ItemEntity;
++import net.minecraft.game.item.Item;
++import net.minecraft.game.item.ItemStack;
++import net.minecraft.game.physics.AxisAlignedBB;
++import net.minecraft.game.world.BlockAccess;
++import net.minecraft.game.world.BlockPos;
++import net.minecraft.game.world.World;
++import net.minecraft.game.world.block.Block;
++import net.minecraft.game.world.material.Material;
++
++import javax.swing.text.html.BlockView;
++
++import java.util.Random;
++
++import static net.minecraft.util.SharedConstants.CUSTOM_RENDER_TYPE;
++import static net.minecraft.util.SharedConstants.getAtlasTexture;
++
++public class AxleBlock extends Block {
++    private static RenderBlocks previousRenderer;
++
++    public AxleBlock(int var1) {
++        super(var1, Material.wood);
++        this.textureIndex = getAtlasTexture(26,6);
++        this.setTickOnLoad(true);
++    }
++
++    public int getRenderType() {
++        return CUSTOM_RENDER_TYPE;
++    }
++
++    @Override
++    public boolean isOpaqueCube() {
++        return false;
++    }
++
++    @Override
++    public boolean renderAsNormalBlock() {
++        return false;
++    }
++
++    @Override
++    public AxisAlignedBB getCollisionBoundingBoxFromPool(World var1, int i, int j, int k) {
++        int metadata = var1.getBlockMetadata(i,j,k);
++        if((metadata & 3) == 0) {
++            return AxisAlignedBB.getBoundingBoxFromPool(((float)i + 0.5F) - 0.125F, (float)j, ((float)k + 0.5F) - 0.125F, (float)i + 0.5F + 0.125F, (float)j + 1.0F, (float)k + 0.5F + 0.125F);
++        } else if((metadata & 3) == 1)  {
++            return AxisAlignedBB.getBoundingBoxFromPool(((float)i + 0.5F) - 0.125F, ((float)j + 0.5F) - 0.125F, (float)k, (float)i + 0.5F + 0.125F, (float)j + 0.5F + 0.125F, (float)k + 1.0F);
++        }
++        return AxisAlignedBB.getBoundingBoxFromPool((float)i, ((float)j + 0.5F) - 0.125F, ((float)k + 0.5F) - 0.125F, (float)i + 1.0F, (float)j + 0.5F + 0.125F, (float)k + 0.5F + 0.125F);
++    }
++
++    @Override
++    public void setBlockBoundsBasedOnState(BlockAccess var1, int var2, int var3, int var4) {
++        int metadata = var1.getBlockMetadata(var2,var3,var4);
++        if((metadata & 3) == 0) {
++            setBlockBounds(0.375F, 0.0F, 0.375F, 0.625F, 1.0F, 0.625F);
++        } else if((metadata & 3) == 1)  {
++            setBlockBounds(0.375F,0.375F,0.0F,0.625F,0.625F,1.0F);
++        } else {
++            setBlockBounds(0.0F, 0.375F, 0.375F, 1.0F, 0.625F, 0.625F);
++        }
++    }
++
++    public void setBlockBoundsForItemRender() {
++        setBlockBounds(0.375F,0.375F,0.0F,0.625F,0.625F,1.0F);
++    }
++
++    @Override
++    public int getBlockTextureFromSideAndMetadata(int var1, int var2) {
++        boolean powered = (var2 & 0x1c) > 0;
++        if((var2 & 3) == 0) {
++            if(var1 < 2)
++                return getAtlasTexture(16,0);
++            return getAtlasTexture(26+(powered ? 1 : 0), 6);
++        } else if((var2 & 3) == 1) {
++            if(var1 == 2 || var1 == 3)
++                return getAtlasTexture(16,0);
++            return getAtlasTexture(26+(powered ? 1 : 0), 6);
++        } else if((var2 & 3) == 2) {
++            if(var1 == 4 || var1 == 5)
++                return getAtlasTexture(16,0);
++            return getAtlasTexture(26+(powered ? 1 : 0),6);
++        }
++        return 0;
++    }
++
++    public boolean renderCustom(RenderBlocks render, BlockAccess access, int x, int y, int z) {
++        int metadata = access.getBlockMetadata(x,y,z);
++        int a = render.eastUVRotate;
++        int b = render.westUVRotate;
++        int c = render.southUVRotate;
++        int d = render.northUVRotate;
++        int e = render.bottomUVRotate;
++        int f = render.topUVRotate;
++        if((metadata & 3) == 0) {
++            this.setBlockBounds(0.375F, 0.0F, 0.375F, 0.625F, 1.0F, 0.625F);
++            render.eastUVRotate = 0;
++            render.westUVRotate = 0;
++            render.southUVRotate = 0;
++            render.northUVRotate = 0;
++            render.bottomUVRotate = 0;
++            render.topUVRotate = 0;
++        } else if((metadata & 3) == 1)  {
++            render.eastUVRotate = 0;
++            render.westUVRotate = 0;
++            render.topUVRotate = 0;
++            render.southUVRotate = 2;
++            render.northUVRotate = 2;
++            render.bottomUVRotate = 3;
++            this.setBlockBounds(0.375F,0.375F,0.0F,0.625F,0.625F,1.0F);
++        } else if((metadata & 3) == 2)  {
++            render.eastUVRotate = 1;
++            render.westUVRotate = 1;
++            render.bottomUVRotate = 1;
++            render.topUVRotate = 1;
++            render.southUVRotate = 0;
++            render.northUVRotate = 0;
++            this.setBlockBounds(0.0F,0.375F,0.375F,1.0F,0.625F,0.625F);
++        }
++        render.renderStandardBlock(this,x,y,z);
++        render.eastUVRotate = a;
++        render.westUVRotate = b;
++        render.southUVRotate = c;
++        render.northUVRotate = d;
++        render.bottomUVRotate = e;
++        render.topUVRotate = f;
++        this.setBlockBounds(0.0F, 0.0F, 0.0F, 1.0F, 1.0F, 1.0F);
++        return true;
++    }
++
++    public void onBlockPlaced(World var1, int var2, int var3, int var4, int var5) {
++        //var1.getClosestPlayer(var2,var3,var4).addChatMessage("Direction: "+var5);
++        switch(var5) {
++            case 0: // Y Dominant
++            case 1:
++                var1.setBlockMetadataWithNotify(var2,var3,var4,0);
++                break;
++            case 2: // Z Dominant
++            case 3:
++                var1.setBlockMetadataWithNotify(var2,var3,var4,1);
++                break;
++            case 4: // X Dominant
++            case 5:
++                var1.setBlockMetadataWithNotify(var2,var3,var4,2);
++                break;
++        }
++    }
++
++    public void onBlockAdded(World var1, int var2, int var3, int var4) {
++        super.onBlockAdded(var1,var2,var3,var4);
++        setPowerLevel(var1,var2,var3,var4,0);
++        var1.scheduleUpdateTick(var2, var3, var4, blockID, tickRate());
++    }
++
++    public void setPowerLevel(World w, int x, int y, int z, int power) {
++        w.setBlockMetadataWithNotify(x,y,z,(w.getBlockMetadata(x,y,z) & 0x3) | (power << 2));
++        w.markBlocksDirty(x,y,z,x,y,z);
++    }
++
++    public int getPowerLevel(BlockAccess w, int x, int y, int z) {
++        return (w.getBlockMetadata(x,y,z) & 0x1c) >> 2;
++    }
++
++    public int getAlignment(BlockAccess w, int x, int y, int z) {
++        return (w.getBlockMetadata(x,y,z) & 0x3);
++    }
++
++    public void onNeighborBlockChange(World world, int i, int j, int k, int iid) {
++        powerCheck(world, i, j, k);
++    }
++
++    public void updateTick(World world, int i, int j, int k, Random random) {
++        powerCheck(world, i, j, k);
++    }
++
++    public static void ejectStackWithRandomOffset(World world, int i, int j, int k, ItemStack stack)
++    {
++        float xOffset = world.rand.nextFloat() * 0.7F + 0.15F;
++        float yOffset = world.rand.nextFloat() * 0.2F + 0.1F;
++        float zOffset = world.rand.nextFloat() * 0.7F + 0.15F;
++        ItemEntity entityitem = new ItemEntity(world, (float)i + xOffset, (float)j + yOffset, (float)k + zOffset, stack);
++        float velocityFactor = 0.05F;
++        entityitem.motionX = (float)world.rand.nextGaussian() * velocityFactor;
++        entityitem.motionY = (float)world.rand.nextGaussian() * velocityFactor + 0.2F;
++        entityitem.motionZ = (float)world.rand.nextGaussian() * velocityFactor;
++        entityitem.delayBeforeCanPickup = 10;
++        world.entityJoinedWorld(entityitem);
++    }
++
++    public void powerCheck(World w, int x, int y, int z) {
++        BlockPos[] targets = new BlockPos[2];
++        int power = getPowerLevel(w,x,y,z);
++        int alignment = getAlignment(w,x,y,z);
++        if(power < 4) {
++            targets[0] = new BlockPos(x,y,z);
++            targets[1] = new BlockPos(x,y,z);
++            switch(alignment)
++            {
++                case 0:
++                    targets[0] = new BlockPos(x,y-1,z);
++                    targets[1] = new BlockPos(x,y+1,z);
++                    break;
++
++                case 1:
++                    targets[0] = new BlockPos(x,y,z-1);
++                    targets[1] = new BlockPos(x,y,z+1);
++                    break;
++
++                default:
++                    targets[0] = new BlockPos(x-1,y,z);
++                    targets[1] = new BlockPos(x+1,y,z);
++                    break;
++            }
++            int iMaxNeighborPower = 0;
++            int iGreaterPowerNeighbors = 0;
++            for(int tempSource = 0; tempSource < 2; tempSource++)
++            {
++                int iTempid = w.getBlockId(targets[tempSource].x, targets[tempSource].y, targets[tempSource].z);
++                if(iTempid != Block.axle.blockID)
++                {
++                    continue;
++                }
++                int iTempAxis = getAlignment(w, targets[tempSource].x, targets[tempSource].y, targets[tempSource].z);
++                if(iTempAxis != alignment)
++                {
++                    continue;
++                }
++                int iTempPowerLevel = getPowerLevel(w, targets[tempSource].x, targets[tempSource].y, targets[tempSource].z);
++                if(iTempPowerLevel > iMaxNeighborPower)
++                {
++                    iMaxNeighborPower = iTempPowerLevel;
++                }
++                if(iTempPowerLevel > power)
++                {
++                    iGreaterPowerNeighbors++;
++                }
++            }
++            int iNewPower = power;
++            if(iMaxNeighborPower > power)
++            {
++                if(iMaxNeighborPower == 1)
++                {
++                    for(int iTemp = 0; iTemp < 5; iTemp++)
++                    {
++                        ejectStackWithRandomOffset(w, x, y, z, new ItemStack(Item.string,1));
++                    }
++
++                    for(int iTemp = 0; iTemp < 2; iTemp++)
++                    {
++                        ejectStackWithRandomOffset(w, x, y, z, new ItemStack(Item.stick,1));
++                    }
++                    w.playSoundEffect((double)x + 0.5D, (double)y + 0.5D, (double)z + 0.5D, "random.explode", 1000000F, 1.25F);
++                    w.setBlockWithNotify(x,y,z,0);
++                    return;
++                }
++                iNewPower = iMaxNeighborPower - 1;
++            } else
++            {
++                iNewPower = 0;
++            }
++            if(iNewPower != power) {
++                setPowerLevel(w,x,y,z,iNewPower);
++            }
++        }
++    }
++
++    public boolean isAxleTowardsFacing(BlockAccess w, int i, int j, int k, int iFacing)
++    {
++        int iAxis = getAlignment(w, i, j, k);
++        switch(iAxis)
++        {
++            case 0: // '\0'
++                if(iFacing == 0 || iFacing == 1)
++                {
++                    return true;
++                }
++                break;
++
++            case 1: // '\001'
++                if(iFacing == 2 || iFacing == 3)
++                {
++                    return true;
++                }
++                break;
++
++            default:
++                if(iFacing == 4 || iFacing == 5)
++                {
++                    return true;
++                }
++                break;
++        }
++        return false;
++    }
++
++    public void overpower(World w, int x, int y, int z) {
++        BlockPos[] targets = new BlockPos[2];
++        int power = getPowerLevel(w, x, y, z);
++        int alignment = getAlignment(w, x, y, z);
++        if (power < 4) {
++            targets[0] = new BlockPos(x, y, z);
++            targets[1] = new BlockPos(x, y, z);
++            switch (alignment) {
++                case 0:
++                    targets[0] = new BlockPos(x, y - 1, z);
++                    targets[1] = new BlockPos(x, y + 1, z);
++                    break;
++
++                case 1:
++                    targets[0] = new BlockPos(x, y, z - 1);
++                    targets[1] = new BlockPos(x, y, z + 1);
++                    break;
++
++                default:
++                    targets[0] = new BlockPos(x - 1, y, z);
++                    targets[1] = new BlockPos(x + 1, y, z);
++                    break;
++            }
++            for (int tempSource = 0; tempSource < 2; tempSource++) {
++                int iTempid = w.getBlockId(targets[tempSource].x, targets[tempSource].y, targets[tempSource].z);
++                if (iTempid == Block.axle.blockID) {
++                    int iTempAxis = getAlignment(w, targets[tempSource].x, targets[tempSource].y, targets[tempSource].z);
++                    if (iTempAxis != alignment) {
++                        continue;
++                    }
++                    int iTempPowerLevel = getPowerLevel(w, targets[tempSource].x, targets[tempSource].y, targets[tempSource].z);
++                    if (iTempPowerLevel < power) {
++                        overpower(w, targets[tempSource].x, targets[tempSource].y, targets[tempSource].z);
++                    }
++                    continue;
++                }
++                if (iTempid == Block.gearbox.blockID) {
++                    ((GearboxBlock) Block.gearbox).overpower(w, targets[tempSource].x, targets[tempSource].y, targets[tempSource].z);
++                }
++            }
++        }
++    }
++}
 --- net/minecraft/client/gui/DownloadTerrainScreen.java
 +++ net/minecraft/client/gui/DownloadTerrainScreen.java
 @@ -36,7 +36,7 @@
@@ -14825,16 +16233,25 @@
  				byte var28 = 0;
  				if(var12) {
  					var28 = 1;
-@@ -126,8 +136,16 @@
+@@ -126,8 +136,25 @@
  				if(var16 * 2 + 1 == var13) {
  					this.drawTexturedRect(var19, var17, 61, 0, 9, 9);
  				}
 +
++				// Sprint
 +				if(var16 * 2 + 1 < (200-this.mc.thePlayer.damageSprintRecover)/10) {
++					if(var16 < 3) {
++						GL11.glColor4f(0.75F,0.75F,1.0F,1.0F);
++					}
 +					this.drawTexturedRect(var19, var17, 98, 0, 9, 9);
++					GL11.glColor4f(1.0F,1.0F,1.0F,1.0F);
 +				}
 +				if(var16 * 2 + 1 == (200-this.mc.thePlayer.damageSprintRecover)/10) {
++					if(var16 < 3) {
++						GL11.glColor4f(0.75F,0.75F,1.0F,1.0F);
++					}
 +					this.drawTexturedRect(var19, var17, 89, 0, 9, 9);
++					GL11.glColor4f(1.0F,1.0F,1.0F,1.0F);
 +				}
  			}
  
@@ -14842,7 +16259,7 @@
  			if(this.mc.thePlayer.isInsideOfMaterial(Material.water)) {
  				var16 = (int)Math.ceil((double)(this.mc.thePlayer.air - 2) * 10.0D / 300.0D);
  				var17 = (int)Math.ceil((double)this.mc.thePlayer.air * 10.0D / 300.0D) - var16;
-@@ -179,24 +197,43 @@
+@@ -179,24 +206,43 @@
  				GL11.glTranslatef(0.0F, 32.0F, 0.0F);
  			}
  
@@ -14897,7 +16314,7 @@
  		}
  
  		if(this.recordPlayingUpFor > 0) {
-@@ -332,10 +369,10 @@
+@@ -332,10 +378,10 @@
  		GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
  		GL11.glColor4f(1.0F, 1.0F, 1.0F, var1);
  		GL11.glBindTexture(GL11.GL_TEXTURE_2D, this.mc.textureRegistry.getTexture("/terrain.png"));
@@ -14912,7 +16329,7 @@
  		Tessellator var8 = Tessellator.instance;
  		var8.startDrawingQuads();
  		var8.addVertexWithUV(0.0D, (double)var3, -90.0D, (double)var4, (double)var7);
-@@ -377,6 +414,22 @@
+@@ -377,6 +423,22 @@
  
  		++this.updateCounter;
  
@@ -14935,7 +16352,7 @@
  		for(int var1 = 0; var1 < this.chatMessageList.size(); ++var1) {
  			++((ChatLine)this.chatMessageList.get(var1)).updateCounter;
  		}
-@@ -415,5 +468,12 @@
+@@ -415,5 +477,12 @@
  		StringTranslate var2 = StringTranslate.getInstance();
  		String var3 = var2.translateKey(var1);
  		this.addChatMessage(var3);
