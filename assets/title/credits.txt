@@ -12,6 +12,7 @@
 Parts of §cMojangFix§r by §bjs6pak§r
 Parts of §cUniTweaks§r by §bDanyGames2014§r
 Parts of §cMC Diverge§r's technical code by §bBlueStaggo§r
+Parts of §cBetter than Wolves§r's code by §bFlowerChild§r
 
 §dMUSIC ATTRIBUTION§r
 intro.ogg : Intro by C418 (Minecraft - Volume Beta)
