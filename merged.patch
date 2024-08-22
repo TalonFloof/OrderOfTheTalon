@@ -391,11 +391,12 @@
  }
 --- /dev/null
 +++ net/minecraft/game/world/block/mechanical/GearboxBlock.java
-@@ -1,0 +1,149 @@
+@@ -1,0 +1,157 @@
 +package net.minecraft.game.world.block.mechanical;
 +
 +import net.minecraft.game.item.Item;
 +import net.minecraft.game.item.ItemStack;
++import net.minecraft.game.world.BlockAccess;
 +import net.minecraft.game.world.BlockPos;
 +import net.minecraft.game.world.World;
 +import net.minecraft.game.world.block.Block;
@@ -413,11 +414,22 @@
 +    }
 +
 +    @Override
-+    public int getBlockTextureFromSideAndMetadata(int var1, int var2) {
-+        if(var1 == var2) {
++    public int getBlockTexture(BlockAccess var1, int var2, int var3, int var4, int var5) {
++        int facing = var1.getBlockMetadata(var2,var3,var4);
++        if(facing == var5) {
 +            return getAtlasTexture(26,8);
 +        }
-+        return getAtlasTexture(16,0);
++        BlockPos sideBlockPos = addFacingAsOffset(new BlockPos(var2,var3,var4),var5);
++        if(var1.getBlockId(sideBlockPos.x,sideBlockPos.y,sideBlockPos.z) == Block.axle.blockID && ((AxleBlock)Block.axle).isAxleTowardsFacing(var1,sideBlockPos.x,sideBlockPos.y,sideBlockPos.z,var5))
++            return getAtlasTexture(27,9);
++        return getAtlasTexture(27,8);
++    }
++
++    @Override
++    public int getBlockTextureFromSide(int var1) {
++        if(var1 == 3)
++            return getAtlasTexture(26,8);
++        return getAtlasTexture(27,8);
 +    }
 +
 +    public static BlockPos addFacingAsOffset(BlockPos pos, int iFacing)
@@ -490,11 +502,7 @@
 +    }
 +
 +    public void onBlockPlaced(World var1, int var2, int var3, int var4, int var5) {
-+        if(var5 > 1) {
-+            var1.setBlockMetadata(var2, var3, var4, Direction.oppositeFace[var5]);
-+        } else {
-+            var1.setBlockMetadata(var2, var3, var4, var5);
-+        }
++        var1.setBlockMetadata(var2, var3, var4, Direction.oppositeFace[var5]);
 +    }
 +
 +    public void onBlockAdded(World var1, int var2, int var3, int var4) {
@@ -597,7 +605,7 @@
 +public class WeatherSensor extends ContainerBlock {
 +    public WeatherSensor(int var1) {
 +        super(var1, Material.circuits);
-+        this.textureIndex = getAtlasTexture(27,9);
++        this.textureIndex = getAtlasTexture(26,9);
 +    }
 +
 +    @Override
@@ -626,9 +634,9 @@
 -			this.imageData[var2 * 4 + 2] = (byte)var7;
 +			int average = (var5 + var6 + var7)/3;
 +
-+			this.imageData[var2 * 4 + 0] = (byte)average;
-+			this.imageData[var2 * 4 + 1] = (byte)average;
-+			this.imageData[var2 * 4 + 2] = (byte)average;
++			this.imageData[var2 * 4 + 0] = (byte)Math.min(255,average*2);
++			this.imageData[var2 * 4 + 1] = (byte)Math.min(255,average*2);
++			this.imageData[var2 * 4 + 2] = (byte)Math.min(255,average*2);
  			this.imageData[var2 * 4 + 3] = (byte)var8;
  		}
  
@@ -1172,7 +1180,7 @@
 +}
 --- net/minecraft/client/GameSettings.java
 +++ net/minecraft/client/GameSettings.java
-@@ -6,6 +6,7 @@
+@@ -6,14 +6,16 @@
  import java.io.FileWriter;
  import java.io.PrintWriter;
  import net.minecraft.game.stats.StatCollector;
@@ -1180,7 +1188,26 @@
  import net.minecraft.util.StringTranslate;
  import org.lwjgl.input.Keyboard;
  
-@@ -33,16 +34,18 @@
+ public class GameSettings {
++	private static final String[] GRAPHIC_QUALITIES = new String[]{"options.graphics.fast","options.graphics.fancy","options.graphics.fabulous"};
+ 	private static final String[] RENDER_DISTANCES = new String[]{"options.renderDistance.far", "options.renderDistance.normal", "options.renderDistance.short", "options.renderDistance.tiny"};
+ 	private static final String[] DIFFICULTIES = new String[]{"options.difficulty.peaceful", "options.difficulty.easy", "options.difficulty.normal", "options.difficulty.hard"};
+ 	private static final String[] GUISCALES = new String[]{"options.guiScale.auto", "options.guiScale.small", "options.guiScale.normal", "options.guiScale.large"};
+-	private static final String[] LIMIT_FRAMERATES = new String[]{"performance.max", "performance.balanced", "performance.powersaver"};
++	private static final String[] LIMIT_FRAMERATES = new String[]{"performance.max", "performance.balanced", "performance.powersaver", "performance.vsync"};
+ 	public float musicVolume = 1.0F;
+ 	public float soundVolume = 1.0F;
+ 	public float mouseSensitivity = 0.5F;
+@@ -23,7 +25,7 @@
+ 	public boolean anaglyph = false;
+ 	public boolean advancedOpengl = false;
+ 	public int limitFramerate = 1;
+-	public boolean fancyGraphics = true;
++	public int fancyGraphics = 2;
+ 	public boolean ambientOcclusion = true;
+ 	public String skin = "Default";
+ 	public KeyBinding keyBindForward = new KeyBinding("key.forward", 17);
+@@ -33,16 +35,18 @@
  	public KeyBinding keyBindJump = new KeyBinding("key.jump", 57);
  	public KeyBinding keyBindInventory = new KeyBinding("key.inventory", 18);
  	public KeyBinding keyBindDrop = new KeyBinding("key.drop", 16);
@@ -1202,6 +1229,42 @@
  	public String lastServer = "";
  	public boolean field_22275_C = false;
  	public boolean smoothCamera = false;
+@@ -119,7 +123,7 @@
+ 		}
+ 
+ 		if(var1 == Option.FRAMERATE_LIMIT) {
+-			this.limitFramerate = (this.limitFramerate + var2 + 3) % 3;
++			this.limitFramerate = (this.limitFramerate + var2 + 4) % 4;
+ 		}
+ 
+ 		if(var1 == Option.DIFFICULTY) {
+@@ -127,7 +131,7 @@
+ 		}
+ 
+ 		if(var1 == Option.GRAPHICS) {
+-			this.fancyGraphics = !this.fancyGraphics;
++			this.fancyGraphics = (this.fancyGraphics + var2) % 3;
+ 			this.mc.worldRenderer.loadRenderers();
+ 		}
+ 
+@@ -170,7 +174,7 @@
+ 			boolean var4 = this.getOptionOrdinalValue(var1);
+ 			return var4 ? var3 + var2.translateKey("options.on") : var3 + var2.translateKey("options.off");
+ 		} else {
+-			return var1 == Option.RENDER_DISTANCE ? var3 + var2.translateKey(RENDER_DISTANCES[this.renderDistance]) : (var1 == Option.DIFFICULTY ? var3 + var2.translateKey(DIFFICULTIES[this.difficulty]) : (var1 == Option.GUI_SCALE ? var3 + var2.translateKey(GUISCALES[this.guiScale]) : (var1 == Option.FRAMERATE_LIMIT ? var3 + StatCollector.translateToLocal(LIMIT_FRAMERATES[this.limitFramerate]) : (var1 == Option.GRAPHICS ? (this.fancyGraphics ? var3 + var2.translateKey("options.graphics.fancy") : var3 + var2.translateKey("options.graphics.fast")) : var3))));
++			return var1 == Option.RENDER_DISTANCE ? var3 + var2.translateKey(RENDER_DISTANCES[this.renderDistance]) : (var1 == Option.DIFFICULTY ? var3 + var2.translateKey(DIFFICULTIES[this.difficulty]) : (var1 == Option.GUI_SCALE ? var3 + var2.translateKey(GUISCALES[this.guiScale]) : (var1 == Option.FRAMERATE_LIMIT ? var3 + StatCollector.translateToLocal(LIMIT_FRAMERATES[this.limitFramerate]) : (var1 == Option.GRAPHICS ? var3 + StatCollector.translateToLocal(GRAPHIC_QUALITIES[this.fancyGraphics]) : var3))));
+ 		}
+ 	}
+ 
+@@ -237,7 +241,7 @@
+ 					}
+ 
+ 					if(var3[0].equals("fancyGraphics")) {
+-						this.fancyGraphics = var3[1].equals("true");
++						this.fancyGraphics = Integer.parseInt(var3[1]);
+ 					}
+ 
+ 					if(var3[0].equals("ao")) {
 --- net/minecraft/game/entity/weather/LightningBoltEntity.java
 +++ net/minecraft/game/entity/weather/LightningBoltEntity.java
 @@ -25,7 +25,7 @@
@@ -1596,6 +1659,33 @@
  		}
 --- net/minecraft/client/gui/IngameMenuScreen.java
 +++ net/minecraft/client/gui/IngameMenuScreen.java
+@@ -22,8 +22,8 @@
+ 
+ 		this.controlList.add(new GuiButton(4, this.width / 2 - 100, this.height / 4 + 24 + var1, "Back to game"));
+ 		this.controlList.add(new GuiButton(0, this.width / 2 - 100, this.height / 4 + 96 + var1, "Options..."));
+-		this.controlList.add(new GuiButton(5, this.width / 2 - 100, this.height / 4 + 48 + var1, 98, 20, StatCollector.translateToLocal("gui.achievements")));
+-		this.controlList.add(new GuiButton(6, this.width / 2 + 2, this.height / 4 + 48 + var1, 98, 20, StatCollector.translateToLocal("gui.stats")));
++		//this.controlList.add(new GuiButton(5, this.width / 2 - 100, this.height / 4 + 48 + var1, 98, 20, StatCollector.translateToLocal("gui.achievements")));
++		//this.controlList.add(new GuiButton(6, this.width / 2 + 2, this.height / 4 + 48 + var1, 98, 20, StatCollector.translateToLocal("gui.stats")));
+ 	}
+ 
+ 	protected void actionPerformed(GuiButton var1) {
+@@ -46,13 +46,13 @@
+ 			this.mc.setIngameFocus();
+ 		}
+ 
+-		if(var1.id == 5) {
++		/*if(var1.id == 5) {
+ 			this.mc.displayGuiScreen(new AchievementScreen(this.mc.statFileWriter));
+ 		}
+ 
+ 		if(var1.id == 6) {
+ 			this.mc.displayGuiScreen(new StatsScreen(this, this.mc.statFileWriter));
+-		}
++		}*/
+ 
+ 	}
+ 
 @@ -62,7 +62,7 @@
  	}
  
@@ -1758,10 +1848,11 @@
  
 --- /dev/null
 +++ net/minecraft/game/world/weather/WeatherManager.java
-@@ -1,0 +1,106 @@
+@@ -1,0 +1,134 @@
 +package net.minecraft.game.world.weather;
 +
 +import net.minecraft.game.world.World;
++import net.minecraft.game.world.biome.Biome;
 +import net.minecraft.util.FastNoiseLite;
 +import net.minecraft.util.MathHelper;
 +
@@ -1775,17 +1866,32 @@
 +    public float weatherIntensity;
 +    public float weatherPower;
 +
-+    public FastNoiseLite humidity;
++    public FastNoiseLite humidity = new FastNoiseLite();
 +
 +    public float windSpeed;
 +    public float windAngle;
 +    public int windSpeedTimer = 10;
++
++    public double humidityX = 0;
++    public double humidityZ = 0;
++    public double humidityProgression = 0;
 +
 +    public WeatherManager(World world) {
 +        this.world = world;
 +        Random rand = new Random();
 +        windAngle = rand.nextInt(360)-180;
 +        windSpeed = rand.nextInt(75);
++
++        humidity.SetNoiseType(FastNoiseLite.NoiseType.Perlin);
++        humidity.SetSeed((int)((world.getRandomSeed() * 1024L) & 0xffffffffL));
++        humidity.SetFrequency(1);
++        /*humidity.SetFrequency(0.056F);
++        humidity.SetRotationType3D(FastNoiseLite.RotationType3D.ImproveXYPlanes);*/
++        humidity.SetFractalType(FastNoiseLite.FractalType.FBm);
++        humidity.SetFractalOctaves(2);
++        /*humidity.SetDomainWarpType(FastNoiseLite.DomainWarpType.OpenSimplex2);
++        humidity.SetDomainWarpAmp(300);
++        humidity.SetDomainWarpFreq(-0.002F);*/
 +    }
 +
 +    public void tick() {
@@ -1808,6 +1914,10 @@
 +            windSpeed += (float)((rand.nextDouble() * 0.05) - (0.05 / 2.0));
 +            windSpeedTimer = 10;
 +        }
++
++        humidityX -= (float) (Math.cos(Math.toRadians(windAngle)) * MathHelper.lerp(windSpeed / 100.0, 0, 0.01F));
++        humidityZ -= (float) (Math.sin(Math.toRadians(windAngle)) * MathHelper.lerp(windSpeed / 100.0, 0, 0.01F));
++        humidityProgression += 1.0;
 +
 +        /*if (this.nextWeather == null && this.weatherIntensity <= 1.0F) {
 +            this.weatherIntensity += 0.002F;
@@ -1864,6 +1974,14 @@
 +    public float getFog() {
 +        return currentWeather == null ? 1.0F : MathHelper.lerp(weatherIntensity,1.0F,currentWeather.fog);
 +    }
++
++    public double getHumidity(int x, int z) {
++        //double v = 1.0 + humidity.GetNoise((((float)x)+(float)humidityX)/16F,(((float)z)+(float)humidityZ)/16F,(float)humidityProgression);
++        double v = 1.0 + humidity.GetNoise(((float)world.getWorldTime()/20F)/150F,0);
++        Biome biome = world.getBiomeSource().getBiomeGenAt((int)x,(int)z);
++        double humidity = MathHelper.lerp(world.getBiomeSource().humidity[0],20.0,80.0);
++        return ((humidity * 0.7 + 40 * 0.3) * v);
++    }
 +}
 --- net/minecraft/game/world/block/tileentity/ChestTileEntity.java
 +++ net/minecraft/game/world/block/tileentity/ChestTileEntity.java
@@ -1909,7 +2027,7 @@
  							var6 = 16 >> var5 - 1;
 --- net/minecraft/client/render/RenderBlocks.java
 +++ net/minecraft/client/render/RenderBlocks.java
-@@ -4,33 +4,28 @@
+@@ -4,33 +4,29 @@
  import net.minecraft.game.physics.Vec3D;
  import net.minecraft.game.world.BlockAccess;
  import net.minecraft.game.world.World;
@@ -1940,6 +2058,7 @@
 +	public boolean flipTexture = false;
  	private boolean renderAllFaces = false;
  	public static boolean fancyGrass = true;
++	public static boolean fabulous = false;
  	public boolean field_31088_b = true;
 -	private int field_31087_g = 0;
 -	private int field_31086_h = 0;
@@ -1956,7 +2075,7 @@
  	private boolean enableAO;
  	private float lightValueOwn;
  	private float aoLightValueXNeg;
-@@ -85,11 +80,19 @@
+@@ -85,11 +81,19 @@
  	private boolean field_22357_ad;
  	private boolean field_22355_ae;
  
@@ -1976,7 +2095,7 @@
  	}
  
  	public void renderBlockUsingTexture(Block var1, int var2, int var3, int var4, int var5) {
-@@ -107,6 +110,9 @@
+@@ -107,6 +111,9 @@
  	public boolean renderBlockByRenderType(Block var1, int var2, int var3, int var4) {
  		int var5 = var1.getRenderType();
  		var1.setBlockBoundsBasedOnState(this.blockAccess, var2, var3, var4);
@@ -1986,7 +2105,7 @@
  		return var5 == 0 ? this.renderStandardBlock(var1, var2, var3, var4) : (var5 == 4 ? this.renderBlockFluids(var1, var2, var3, var4) : (var5 == 13 ? this.renderBlockCactus(var1, var2, var3, var4) : (var5 == 1 ? this.renderBlockReed(var1, var2, var3, var4) : (var5 == 6 ? this.renderBlockCrops(var1, var2, var3, var4) : (var5 == 2 ? this.renderBlockTorch(var1, var2, var3, var4) : (var5 == 3 ? this.renderBlockFire(var1, var2, var3, var4) : (var5 == 5 ? this.renderBlockRedstoneWire(var1, var2, var3, var4) : (var5 == 8 ? this.renderBlockLadder(var1, var2, var3, var4) : (var5 == 7 ? this.renderBlockDoor(var1, var2, var3, var4) : (var5 == 9 ? this.renderBlockMinecartTrack((RailBlock)var1, var2, var3, var4) : (var5 == 10 ? this.renderBlockStairs(var1, var2, var3, var4) : (var5 == 11 ? this.renderBlockFence(var1, var2, var3, var4) : (var5 == 12 ? this.renderBlockLever(var1, var2, var3, var4) : (var5 == 14 ? this.renderBlockBed(var1, var2, var3, var4) : (var5 == 15 ? this.renderBlockRepeater(var1, var2, var3, var4) : (var5 == 16 ? this.func_31074_b(var1, var2, var3, var4, false) : (var5 == 17 ? this.func_31080_c(var1, var2, var3, var4, true) : false)))))))))))))))));
  	}
  
-@@ -122,12 +128,12 @@
+@@ -122,12 +129,12 @@
  		float var25 = var1.getBlockBrightness(this.blockAccess, var2, var3, var4);
  		var5.setColorOpaque_F(var9 * var25, var9 * var25, var9 * var25);
  		int var26 = var1.getBlockTexture(this.blockAccess, var2, var3, var4, 0);
@@ -2005,7 +2124,7 @@
  		double var37 = (double)var2 + var1.minX;
  		double var39 = (double)var2 + var1.maxX;
  		double var41 = (double)var3 + var1.minY + 0.1875D;
-@@ -140,12 +146,12 @@
+@@ -140,12 +147,12 @@
  		float var64 = var1.getBlockBrightness(this.blockAccess, var2, var3 + 1, var4);
  		var5.setColorOpaque_F(var10 * var64, var10 * var64, var10 * var64);
  		var27 = var1.getBlockTexture(this.blockAccess, var2, var3, var4, 1);
@@ -2024,7 +2143,7 @@
  		double var38 = var30;
  		double var40 = var32;
  		double var42 = var34;
-@@ -317,12 +323,12 @@
+@@ -317,12 +324,12 @@
  		this.renderTorchAtAngle(var1, (double)var2 + var12, (double)var3 + var10, (double)var4 + var14, 0.0D, 0.0D);
  		this.renderTorchAtAngle(var1, (double)var2 + var16, (double)var3 + var10, (double)var4 + var18, 0.0D, 0.0D);
  		int var20 = var1.getBlockTextureFromSide(1);
@@ -2043,7 +2162,7 @@
  		float var31 = 2.0F / 16.0F;
  		float var32 = (float)(var2 + 1);
  		float var33 = (float)(var2 + 1);
-@@ -382,108 +388,108 @@
+@@ -382,108 +389,108 @@
  		if(var7) {
  			switch(var8) {
  			case 0:
@@ -2207,7 +2326,7 @@
  		var19.setColorOpaque_F(var13, var13, var13);
  		var19.addVertexWithUV(var1, var7, var9, var24, var22);
  		var19.addVertexWithUV(var1, var5, var9, var20, var22);
-@@ -492,18 +498,18 @@
+@@ -492,18 +499,18 @@
  	}
  
  	private void func_31081_b(double var1, double var3, double var5, double var7, double var9, double var11, float var13, double var14) {
@@ -2233,7 +2352,7 @@
  		var19.setColorOpaque_F(var13, var13, var13);
  		var19.addVertexWithUV(var1, var5, var11, var24, var22);
  		var19.addVertexWithUV(var1, var5, var9, var20, var22);
-@@ -512,18 +518,18 @@
+@@ -512,18 +519,18 @@
  	}
  
  	private void func_31077_c(double var1, double var3, double var5, double var7, double var9, double var11, float var13, double var14) {
@@ -2259,7 +2378,7 @@
  		var19.setColorOpaque_F(var13, var13, var13);
  		var19.addVertexWithUV(var3, var5, var9, var24, var22);
  		var19.addVertexWithUV(var1, var5, var9, var20, var22);
-@@ -545,10 +551,10 @@
+@@ -545,10 +552,10 @@
  		double var13 = var5 ? 16.0D : 8.0D;
  		switch(var7) {
  		case 0:
@@ -2274,7 +2393,7 @@
  			var1.setBlockBounds(0.0F, 0.0F, 0.0F, 1.0F, 0.25F, 1.0F);
  			this.renderStandardBlock(var1, var2, var3, var4);
  			this.func_31076_a((double)((float)var2 + 6.0F / 16.0F), (double)((float)var2 + 10.0F / 16.0F), (double)((float)var3 + 0.25F), (double)((float)var3 + 0.25F + var12), (double)((float)var4 + 10.0F / 16.0F), (double)((float)var4 + 10.0F / 16.0F), var11 * 0.8F, var13);
-@@ -565,8 +571,8 @@
+@@ -565,8 +572,8 @@
  			this.func_31076_a((double)((float)var2 + 10.0F / 16.0F), (double)((float)var2 + 10.0F / 16.0F), (double)((float)var3 - 0.25F + 1.0F - var12), (double)((float)var3 - 0.25F + 1.0F), (double)((float)var4 + 10.0F / 16.0F), (double)((float)var4 + 6.0F / 16.0F), var11 * 0.6F, var13);
  			break;
  		case 2:
@@ -2285,7 +2404,7 @@
  			var1.setBlockBounds(0.0F, 0.0F, 0.0F, 1.0F, 1.0F, 0.25F);
  			this.renderStandardBlock(var1, var2, var3, var4);
  			this.func_31081_b((double)((float)var2 + 6.0F / 16.0F), (double)((float)var2 + 6.0F / 16.0F), (double)((float)var3 + 10.0F / 16.0F), (double)((float)var3 + 6.0F / 16.0F), (double)((float)var4 + 0.25F), (double)((float)var4 + 0.25F + var12), var11 * 0.6F, var13);
-@@ -575,10 +581,10 @@
+@@ -575,10 +582,10 @@
  			this.func_31081_b((double)((float)var2 + 10.0F / 16.0F), (double)((float)var2 + 6.0F / 16.0F), (double)((float)var3 + 10.0F / 16.0F), (double)((float)var3 + 10.0F / 16.0F), (double)((float)var4 + 0.25F), (double)((float)var4 + 0.25F + var12), var11, var13);
  			break;
  		case 3:
@@ -2300,7 +2419,7 @@
  			var1.setBlockBounds(0.0F, 0.0F, 12.0F / 16.0F, 1.0F, 1.0F, 1.0F);
  			this.renderStandardBlock(var1, var2, var3, var4);
  			this.func_31081_b((double)((float)var2 + 6.0F / 16.0F), (double)((float)var2 + 6.0F / 16.0F), (double)((float)var3 + 10.0F / 16.0F), (double)((float)var3 + 6.0F / 16.0F), (double)((float)var4 - 0.25F + 1.0F - var12), (double)((float)var4 - 0.25F + 1.0F), var11 * 0.6F, var13);
-@@ -587,10 +593,10 @@
+@@ -587,10 +594,10 @@
  			this.func_31081_b((double)((float)var2 + 10.0F / 16.0F), (double)((float)var2 + 6.0F / 16.0F), (double)((float)var3 + 10.0F / 16.0F), (double)((float)var3 + 10.0F / 16.0F), (double)((float)var4 - 0.25F + 1.0F - var12), (double)((float)var4 - 0.25F + 1.0F), var11, var13);
  			break;
  		case 4:
@@ -2315,7 +2434,7 @@
  			var1.setBlockBounds(0.0F, 0.0F, 0.0F, 0.25F, 1.0F, 1.0F);
  			this.renderStandardBlock(var1, var2, var3, var4);
  			this.func_31077_c((double)((float)var2 + 0.25F), (double)((float)var2 + 0.25F + var12), (double)((float)var3 + 6.0F / 16.0F), (double)((float)var3 + 6.0F / 16.0F), (double)((float)var4 + 10.0F / 16.0F), (double)((float)var4 + 6.0F / 16.0F), var11 * 0.5F, var13);
-@@ -599,10 +605,10 @@
+@@ -599,10 +606,10 @@
  			this.func_31077_c((double)((float)var2 + 0.25F), (double)((float)var2 + 0.25F + var12), (double)((float)var3 + 10.0F / 16.0F), (double)((float)var3 + 6.0F / 16.0F), (double)((float)var4 + 10.0F / 16.0F), (double)((float)var4 + 10.0F / 16.0F), var11 * 0.6F, var13);
  			break;
  		case 5:
@@ -2330,7 +2449,7 @@
  			var1.setBlockBounds(12.0F / 16.0F, 0.0F, 0.0F, 1.0F, 1.0F, 1.0F);
  			this.renderStandardBlock(var1, var2, var3, var4);
  			this.func_31077_c((double)((float)var2 - 0.25F + 1.0F - var12), (double)((float)var2 - 0.25F + 1.0F), (double)((float)var3 + 6.0F / 16.0F), (double)((float)var3 + 6.0F / 16.0F), (double)((float)var4 + 10.0F / 16.0F), (double)((float)var4 + 6.0F / 16.0F), var11 * 0.5F, var13);
-@@ -611,12 +617,12 @@
+@@ -611,12 +618,12 @@
  			this.func_31077_c((double)((float)var2 - 0.25F + 1.0F - var12), (double)((float)var2 - 0.25F + 1.0F), (double)((float)var3 + 10.0F / 16.0F), (double)((float)var3 + 6.0F / 16.0F), (double)((float)var4 + 10.0F / 16.0F), (double)((float)var4 + 10.0F / 16.0F), var11 * 0.6F, var13);
  		}
  
@@ -2349,7 +2468,7 @@
  		var1.setBlockBounds(0.0F, 0.0F, 0.0F, 1.0F, 1.0F, 1.0F);
  		return true;
  	}
-@@ -628,7 +634,7 @@
+@@ -628,7 +635,7 @@
  		Tessellator var8 = Tessellator.instance;
  		boolean var9 = this.overrideBlockTexture >= 0;
  		if(!var9) {
@@ -2358,7 +2477,7 @@
  		}
  
  		float var10 = 0.25F;
-@@ -664,12 +670,12 @@
+@@ -664,12 +671,12 @@
  			var14 = this.overrideBlockTexture;
  		}
  
@@ -2377,7 +2496,7 @@
  		Vec3D[] var21 = new Vec3D[8];
  		float var22 = 1.0F / 16.0F;
  		float var23 = 1.0F / 16.0F;
-@@ -732,15 +738,15 @@
+@@ -732,15 +739,15 @@
  
  		for(int var29 = 0; var29 < 6; ++var29) {
  			if(var29 == 0) {
@@ -2401,7 +2520,7 @@
  			}
  
  			if(var29 == 0) {
-@@ -793,12 +799,12 @@
+@@ -793,12 +800,12 @@
  
  		float var7 = var1.getBlockBrightness(this.blockAccess, var2, var3, var4);
  		var5.setColorOpaque_F(var7, var7, var7);
@@ -2420,7 +2539,7 @@
  		float var18 = 1.4F;
  		double var21;
  		double var23;
-@@ -811,10 +817,10 @@
+@@ -811,10 +818,10 @@
  			float var37 = 0.2F;
  			float var20 = 1.0F / 16.0F;
  			if((var2 + var3 + var4 & 1) == 1) {
@@ -2435,7 +2554,7 @@
  			}
  
  			if((var2 / 2 + var3 / 2 + var4 / 2 & 1) == 1) {
-@@ -876,10 +882,10 @@
+@@ -876,10 +883,10 @@
  				var31 = (double)var2 + 0.5D + 0.5D;
  				var33 = (double)var4 + 0.5D - 0.5D;
  				double var35 = (double)var4 + 0.5D + 0.5D;
@@ -2450,7 +2569,7 @@
  				++var3;
  				var18 = -0.2F;
  				if((var2 + var3 + var4 & 1) == 0) {
-@@ -887,10 +893,10 @@
+@@ -887,10 +894,10 @@
  					var5.addVertexWithUV(var21, (double)(var3 + 0), (double)(var4 + 0), var12, var16);
  					var5.addVertexWithUV(var21, (double)(var3 + 0), (double)(var4 + 1), var10, var16);
  					var5.addVertexWithUV(var29, (double)((float)var3 + var18), (double)(var4 + 1), var10, var14);
@@ -2465,7 +2584,7 @@
  					var5.addVertexWithUV(var31, (double)((float)var3 + var18), (double)(var4 + 1), var12, var14);
  					var5.addVertexWithUV(var23, (double)(var3 + 0), (double)(var4 + 1), var12, var16);
  					var5.addVertexWithUV(var23, (double)(var3 + 0), (double)(var4 + 0), var10, var16);
-@@ -900,10 +906,10 @@
+@@ -900,10 +907,10 @@
  					var5.addVertexWithUV((double)(var2 + 0), (double)(var3 + 0), var27, var12, var16);
  					var5.addVertexWithUV((double)(var2 + 1), (double)(var3 + 0), var27, var10, var16);
  					var5.addVertexWithUV((double)(var2 + 1), (double)((float)var3 + var18), var35, var10, var14);
@@ -2480,7 +2599,7 @@
  					var5.addVertexWithUV((double)(var2 + 1), (double)((float)var3 + var18), var33, var12, var14);
  					var5.addVertexWithUV((double)(var2 + 1), (double)(var3 + 0), var25, var12, var16);
  					var5.addVertexWithUV((double)(var2 + 0), (double)(var3 + 0), var25, var10, var16);
-@@ -927,10 +933,10 @@
+@@ -927,10 +934,10 @@
  			var5.addVertexWithUV(var21, (double)(var3 + 0), (double)(var4 + 0), var12, var16);
  			var5.addVertexWithUV(var21, (double)(var3 + 0), (double)(var4 + 1), var10, var16);
  			var5.addVertexWithUV(var29, (double)((float)var3 + var18), (double)(var4 + 1), var10, var14);
@@ -2495,7 +2614,7 @@
  			var5.addVertexWithUV((double)(var2 + 1), (double)((float)var3 + var18), var33, var12, var14);
  			var5.addVertexWithUV((double)(var2 + 1), (double)(var3 + 0), var25, var12, var16);
  			var5.addVertexWithUV((double)(var2 + 0), (double)(var3 + 0), var25, var10, var16);
-@@ -955,10 +961,10 @@
+@@ -955,10 +962,10 @@
  			var5.addVertexWithUV(var21, (double)(var3 + 0), (double)(var4 + 1), var10, var16);
  			var5.addVertexWithUV(var21, (double)(var3 + 0), (double)(var4 + 0), var12, var16);
  			var5.addVertexWithUV(var29, (double)((float)var3 + var18), (double)(var4 + 0), var12, var14);
@@ -2510,7 +2629,7 @@
  			var5.addVertexWithUV((double)(var2 + 0), (double)((float)var3 + var18), var33, var10, var14);
  			var5.addVertexWithUV((double)(var2 + 0), (double)(var3 + 0), var25, var10, var16);
  			var5.addVertexWithUV((double)(var2 + 1), (double)(var3 + 0), var25, var12, var16);
-@@ -998,12 +1004,12 @@
+@@ -998,12 +1005,12 @@
  		}
  
  		var5.setColorOpaque_F(var8 * var10, var8 * var11, var8 * var12);
@@ -2529,7 +2648,7 @@
  		boolean var26 = RedstoneWireBlock.isPowerProviderOrWire(this.blockAccess, var2 - 1, var3, var4, 1) || !this.blockAccess.isBlockNormalCube(var2 - 1, var3, var4) && RedstoneWireBlock.isPowerProviderOrWire(this.blockAccess, var2 - 1, var3 - 1, var4, -1);
  		boolean var27 = RedstoneWireBlock.isPowerProviderOrWire(this.blockAccess, var2 + 1, var3, var4, 3) || !this.blockAccess.isBlockNormalCube(var2 + 1, var3, var4) && RedstoneWireBlock.isPowerProviderOrWire(this.blockAccess, var2 + 1, var3 - 1, var4, -1);
  		boolean var28 = RedstoneWireBlock.isPowerProviderOrWire(this.blockAccess, var2, var3, var4 - 1, 2) || !this.blockAccess.isBlockNormalCube(var2, var3, var4 - 1) && RedstoneWireBlock.isPowerProviderOrWire(this.blockAccess, var2, var3 - 1, var4 - 1, -1);
-@@ -1040,10 +1046,10 @@
+@@ -1040,10 +1047,10 @@
  		}
  
  		if(var35 != 0) {
@@ -2544,7 +2663,7 @@
  		}
  
  		if(var35 == 0) {
-@@ -1053,7 +1059,7 @@
+@@ -1053,7 +1060,7 @@
  				}
  
  				if(!var26) {
@@ -2553,7 +2672,7 @@
  				}
  
  				if(!var27) {
-@@ -1061,7 +1067,7 @@
+@@ -1061,7 +1068,7 @@
  				}
  
  				if(!var27) {
@@ -2562,7 +2681,7 @@
  				}
  
  				if(!var28) {
-@@ -1069,7 +1075,7 @@
+@@ -1069,7 +1076,7 @@
  				}
  
  				if(!var28) {
@@ -2571,7 +2690,7 @@
  				}
  
  				if(!var29) {
-@@ -1077,7 +1083,7 @@
+@@ -1077,7 +1084,7 @@
  				}
  
  				if(!var29) {
@@ -2580,7 +2699,7 @@
  				}
  			}
  
-@@ -1113,10 +1119,10 @@
+@@ -1113,10 +1120,10 @@
  		}
  
  		if(!this.blockAccess.isBlockNormalCube(var2, var3 + 1, var4)) {
@@ -2595,7 +2714,7 @@
  			if(this.blockAccess.isBlockNormalCube(var2 - 1, var3, var4) && this.blockAccess.getBlockId(var2 - 1, var3 + 1, var4) == Block.redstoneWire.blockID) {
  				var5.setColorOpaque_F(var8 * var10, var8 * var11, var8 * var12);
  				var5.addVertexWithUV((double)((float)var2 + 0.015625F), (double)((float)(var3 + 1) + 7.0F / 320.0F), (double)(var4 + 1), var17, var19);
-@@ -1187,12 +1193,12 @@
+@@ -1187,12 +1194,12 @@
  
  		float var8 = var1.getBlockBrightness(this.blockAccess, var2, var3, var4);
  		var5.setColorOpaque_F(var8, var8, var8);
@@ -2614,7 +2733,7 @@
  		float var19 = 1.0F / 16.0F;
  		float var20 = (float)(var2 + 1);
  		float var21 = (float)(var2 + 1);
-@@ -1267,12 +1273,12 @@
+@@ -1267,12 +1274,12 @@
  
  		float var7 = var1.getBlockBrightness(this.blockAccess, var2, var3, var4);
  		var5.setColorOpaque_F(var7, var7, var7);
@@ -2633,7 +2752,7 @@
  		int var18 = this.blockAccess.getBlockMetadata(var2, var3, var4);
  		float var19 = 0.0F;
  		float var20 = 0.05F;
-@@ -1354,16 +1360,16 @@
+@@ -1354,16 +1361,16 @@
  			var13 = this.overrideBlockTexture;
  		}
  
@@ -2660,7 +2779,7 @@
  		var2 += 0.5D;
  		var6 += 0.5D;
  		double var28 = var2 - 0.5D;
-@@ -1401,12 +1407,12 @@
+@@ -1401,12 +1408,12 @@
  			var10 = this.overrideBlockTexture;
  		}
  
@@ -2679,7 +2798,7 @@
  		double var21 = var3 + 0.5D - (double)0.45F;
  		double var23 = var3 + 0.5D + (double)0.45F;
  		double var25 = var7 + 0.5D - (double)0.45F;
-@@ -1436,12 +1442,12 @@
+@@ -1436,12 +1443,12 @@
  			var10 = this.overrideBlockTexture;
  		}
  
@@ -2698,7 +2817,7 @@
  		double var21 = var3 + 0.5D - 0.25D;
  		double var23 = var3 + 0.5D + 0.25D;
  		double var25 = var7 + 0.5D - 0.5D;
-@@ -1522,19 +1528,19 @@
+@@ -1522,19 +1529,19 @@
  					var28 = var1.getBlockTextureFromSideAndMetadata(2, var23);
  				}
  
@@ -2726,7 +2845,16 @@
  				var38 = var1.getBlockBrightness(this.blockAccess, var2, var3, var4);
  				var5.setColorOpaque_F(var15 * var38 * var7, var15 * var38 * var8, var15 * var38 * var9);
  				var5.addVertexWithUV((double)(var2 + 0), (double)((float)var3 + var24), (double)(var4 + 0), var32 - (double)var37 - (double)var36, var34 - (double)var37 + (double)var36);
-@@ -1570,8 +1576,8 @@
+@@ -1545,7 +1552,7 @@
+ 
+ 			if(this.renderAllFaces || var11) {
+ 				float var52 = var1.getBlockBrightness(this.blockAccess, var2, var3 - 1, var4);
+-				var5.setColorOpaque_F(var14 * var52, var14 * var52, var14 * var52);
++				var5.setColorOpaque_F(var14 * var52 * var7, var14 * var52 * var8, var14 * var52 * var9);
+ 				this.renderBottomFace(var1, (double)var2, (double)var3, (double)var4, var1.getBlockTextureFromSide(0));
+ 				var13 = true;
+ 			}
+@@ -1570,8 +1577,8 @@
  				}
  
  				int var54 = var1.getBlockTextureFromSideAndMetadata(var28 + 2, var23);
@@ -2737,7 +2865,7 @@
  				if(this.renderAllFaces || var12[var28]) {
  					float var35;
  					float var39;
-@@ -1607,11 +1613,11 @@
+@@ -1607,11 +1614,11 @@
  					}
  
  					var13 = true;
@@ -2754,7 +2882,7 @@
  					float var51 = var1.getBlockBrightness(this.blockAccess, var53, var3, var31);
  					if(var28 < 2) {
  						var51 *= var16;
-@@ -1767,7 +1773,7 @@
+@@ -1767,7 +1774,7 @@
  		this.field_22339_T = Block.canBlockGrass[this.blockAccess.getBlockId(var2, var3 + 1, var4 - 1)];
  		this.field_22355_ae = Block.canBlockGrass[this.blockAccess.getBlockId(var2, var3 - 1, var4 + 1)];
  		this.field_22361_ab = Block.canBlockGrass[this.blockAccess.getBlockId(var2, var3 - 1, var4 - 1)];
@@ -2763,12 +2891,12 @@
  			var18 = false;
  			var17 = var18;
  			var16 = var18;
-@@ -1904,6 +1910,16 @@
+@@ -1904,6 +1911,16 @@
  			this.colorGreenTopRight *= var12;
  			this.colorBlueTopRight *= var12;
  			this.renderTopFace(var1, (double)var2, (double)var3, (double)var4, var1.getBlockTexture(this.blockAccess, var2, var3, var4, 1));
 +			if(var1 instanceof GrassBlock) {
-+				if(var1.blockID == Block.grass.blockID && fancyGrass) {
++				if(var1.blockID == Block.grass.blockID && fabulous) {
 +					if(this.blockAccess.getBlockId(var2,var3+1,var4) == 0) {
 +						if (Math.abs(grassShowNoise.GetNoise((float) var2 * 16, (float) var4 * 16)) > 0.25F) {
 +							double val = Math.abs(grassHeightNoise.GetNoise((float) var2, (float) var4));
@@ -2780,7 +2908,7 @@
  			var8 = true;
  		}
  
-@@ -1968,7 +1984,7 @@
+@@ -1968,7 +1985,7 @@
  			this.colorBlueTopRight *= var12;
  			var19 = var1.getBlockTexture(this.blockAccess, var2, var3, var4, 2);
  			this.renderEastFace(var1, (double)var2, (double)var3, (double)var4, var19);
@@ -2789,7 +2917,7 @@
  				this.colorRedTopLeft *= var5;
  				this.colorRedBottomLeft *= var5;
  				this.colorRedBottomRight *= var5;
-@@ -1981,7 +1997,7 @@
+@@ -1981,7 +1998,7 @@
  				this.colorBlueBottomLeft *= var7;
  				this.colorBlueBottomRight *= var7;
  				this.colorBlueTopRight *= var7;
@@ -2798,7 +2926,7 @@
  			}
  
  			var8 = true;
-@@ -2047,7 +2063,7 @@
+@@ -2047,7 +2064,7 @@
  			this.colorBlueTopRight *= var12;
  			var19 = var1.getBlockTexture(this.blockAccess, var2, var3, var4, 3);
  			this.renderWestFace(var1, (double)var2, (double)var3, (double)var4, var1.getBlockTexture(this.blockAccess, var2, var3, var4, 3));
@@ -2807,7 +2935,7 @@
  				this.colorRedTopLeft *= var5;
  				this.colorRedBottomLeft *= var5;
  				this.colorRedBottomRight *= var5;
-@@ -2060,7 +2076,7 @@
+@@ -2060,7 +2077,7 @@
  				this.colorBlueBottomLeft *= var7;
  				this.colorBlueBottomRight *= var7;
  				this.colorBlueTopRight *= var7;
@@ -2816,7 +2944,7 @@
  			}
  
  			var8 = true;
-@@ -2126,7 +2142,7 @@
+@@ -2126,7 +2143,7 @@
  			this.colorBlueTopRight *= var12;
  			var19 = var1.getBlockTexture(this.blockAccess, var2, var3, var4, 4);
  			this.renderNorthFace(var1, (double)var2, (double)var3, (double)var4, var19);
@@ -2825,7 +2953,7 @@
  				this.colorRedTopLeft *= var5;
  				this.colorRedBottomLeft *= var5;
  				this.colorRedBottomRight *= var5;
-@@ -2139,7 +2155,7 @@
+@@ -2139,7 +2156,7 @@
  				this.colorBlueBottomLeft *= var7;
  				this.colorBlueBottomRight *= var7;
  				this.colorBlueTopRight *= var7;
@@ -2834,7 +2962,7 @@
  			}
  
  			var8 = true;
-@@ -2205,7 +2221,7 @@
+@@ -2205,7 +2222,7 @@
  			this.colorBlueTopRight *= var12;
  			var19 = var1.getBlockTexture(this.blockAccess, var2, var3, var4, 5);
  			this.renderSouthFace(var1, (double)var2, (double)var3, (double)var4, var19);
@@ -2843,7 +2971,7 @@
  				this.colorRedTopLeft *= var5;
  				this.colorRedBottomLeft *= var5;
  				this.colorRedBottomRight *= var5;
-@@ -2218,7 +2234,7 @@
+@@ -2218,7 +2235,7 @@
  				this.colorBlueBottomLeft *= var7;
  				this.colorBlueBottomRight *= var7;
  				this.colorBlueTopRight *= var7;
@@ -2852,7 +2980,7 @@
  			}
  
  			var8 = true;
-@@ -2290,9 +2306,9 @@
+@@ -2290,9 +2307,9 @@
  			var8.setColorOpaque_F(var18 * var27, var21 * var27, var24 * var27);
  			var28 = var1.getBlockTexture(this.blockAccess, var2, var3, var4, 2);
  			this.renderEastFace(var1, (double)var2, (double)var3, (double)var4, var28);
@@ -2864,7 +2992,7 @@
  			}
  
  			var9 = true;
-@@ -2307,9 +2323,9 @@
+@@ -2307,9 +2324,9 @@
  			var8.setColorOpaque_F(var18 * var27, var21 * var27, var24 * var27);
  			var28 = var1.getBlockTexture(this.blockAccess, var2, var3, var4, 3);
  			this.renderWestFace(var1, (double)var2, (double)var3, (double)var4, var28);
@@ -2876,7 +3004,7 @@
  			}
  
  			var9 = true;
-@@ -2324,9 +2340,9 @@
+@@ -2324,9 +2341,9 @@
  			var8.setColorOpaque_F(var19 * var27, var22 * var27, var25 * var27);
  			var28 = var1.getBlockTexture(this.blockAccess, var2, var3, var4, 4);
  			this.renderNorthFace(var1, (double)var2, (double)var3, (double)var4, var28);
@@ -2888,7 +3016,7 @@
  			}
  
  			var9 = true;
-@@ -2341,9 +2357,9 @@
+@@ -2341,9 +2358,9 @@
  			var8.setColorOpaque_F(var19 * var27, var22 * var27, var25 * var27);
  			var28 = var1.getBlockTexture(this.blockAccess, var2, var3, var4, 5);
  			this.renderSouthFace(var1, (double)var2, (double)var3, (double)var4, var28);
@@ -2900,7 +3028,7 @@
  			}
  
  			var9 = true;
-@@ -2678,53 +2694,53 @@
+@@ -2678,53 +2695,53 @@
  			var8 = this.overrideBlockTexture;
  		}
  
@@ -2979,7 +3107,7 @@
  			var20 = var14;
  			var22 = var12;
  			var24 = var16;
-@@ -2760,53 +2776,53 @@
+@@ -2760,53 +2777,53 @@
  			var8 = this.overrideBlockTexture;
  		}
  
@@ -3058,7 +3186,7 @@
  			var20 = var14;
  			var22 = var12;
  			var24 = var16;
-@@ -2833,7 +2849,6 @@
+@@ -2833,7 +2850,6 @@
  			var9.addVertexWithUV(var28, var32, var34, var12, var16);
  			var9.addVertexWithUV(var28, var32, var36, var22, var26);
  		}
@@ -3066,7 +3194,7 @@
  	}
  
  	public void renderEastFace(Block var1, double var2, double var4, double var6, int var8) {
-@@ -2842,12 +2857,12 @@
+@@ -2842,12 +2858,12 @@
  			var8 = this.overrideBlockTexture;
  		}
  
@@ -3085,7 +3213,7 @@
  		double var20;
  		if(this.flipTexture) {
  			var20 = var12;
-@@ -2856,46 +2871,46 @@
+@@ -2856,46 +2872,46 @@
  		}
  
  		if(var1.minX < 0.0D || var1.maxX > 1.0D) {
@@ -3151,7 +3279,7 @@
  			var20 = var14;
  			var22 = var12;
  			var24 = var16;
-@@ -2931,12 +2946,12 @@
+@@ -2931,12 +2947,12 @@
  			var8 = this.overrideBlockTexture;
  		}
  
@@ -3170,7 +3298,7 @@
  		double var20;
  		if(this.flipTexture) {
  			var20 = var12;
-@@ -2945,46 +2960,46 @@
+@@ -2945,46 +2961,46 @@
  		}
  
  		if(var1.minX < 0.0D || var1.maxX > 1.0D) {
@@ -3236,7 +3364,7 @@
  			var20 = var14;
  			var22 = var12;
  			var24 = var16;
-@@ -3020,12 +3035,12 @@
+@@ -3020,12 +3036,12 @@
  			var8 = this.overrideBlockTexture;
  		}
  
@@ -3255,7 +3383,7 @@
  		double var20;
  		if(this.flipTexture) {
  			var20 = var12;
-@@ -3034,46 +3049,46 @@
+@@ -3034,46 +3050,46 @@
  		}
  
  		if(var1.minZ < 0.0D || var1.maxZ > 1.0D) {
@@ -3321,7 +3449,7 @@
  			var20 = var14;
  			var22 = var12;
  			var24 = var16;
-@@ -3109,12 +3124,12 @@
+@@ -3109,12 +3125,12 @@
  			var8 = this.overrideBlockTexture;
  		}
  
@@ -3340,7 +3468,7 @@
  		double var20;
  		if(this.flipTexture) {
  			var20 = var12;
-@@ -3123,46 +3138,46 @@
+@@ -3123,46 +3139,46 @@
  		}
  
  		if(var1.minZ < 0.0D || var1.maxZ > 1.0D) {
@@ -3509,16 +3637,28 @@
  		super.drawScreen(var1, var2, var3);
 --- /dev/null
 +++ net/minecraft/game/world/block/mechanical/MillstoneBlock.java
-@@ -1,0 +1,16 @@
+@@ -1,0 +1,28 @@
 +package net.minecraft.game.world.block.mechanical;
 +
 +import net.minecraft.game.world.block.ContainerBlock;
 +import net.minecraft.game.world.block.tileentity.TileEntity;
 +import net.minecraft.game.world.material.Material;
 +
++import static net.minecraft.util.SharedConstants.getAtlasTexture;
++
 +public class MillstoneBlock extends ContainerBlock {
 +    public MillstoneBlock(int var1) {
 +        super(var1, Material.stone);
++    }
++
++    @Override
++    public int getBlockTextureFromSide(int var1) {
++        if(var1 == 1) {
++            return getAtlasTexture(26,6);
++        } else if(var1 == 0) {
++            return getAtlasTexture(31,2);
++        }
++        return getAtlasTexture(27,6);
 +    }
 +
 +    @Override
@@ -3801,12 +3941,13 @@
  import net.minecraft.game.physics.AxisAlignedBB;
  import net.minecraft.game.physics.Vec3D;
  import net.minecraft.game.stats.StatCollector;
-@@ -23,8 +17,14 @@
+@@ -23,8 +17,15 @@
  import net.minecraft.game.world.BlockAccess;
  import net.minecraft.game.world.MovingObjectPosition;
  import net.minecraft.game.world.World;
 +import net.minecraft.game.world.block.mechanical.AxleBlock;
 +import net.minecraft.game.world.block.mechanical.GearboxBlock;
++import net.minecraft.game.world.block.mechanical.MillstoneBlock;
 +import net.minecraft.game.world.block.mechanical.WeatherSensor;
  import net.minecraft.game.world.block.tileentity.SignTileEntity;
  import net.minecraft.game.world.material.Material;
@@ -3816,7 +3957,7 @@
  
  public class Block {
  	public static final StepSound soundPowderFootstep = new StepSound("stone", 1.0F, 1.0F);
-@@ -36,110 +36,118 @@
+@@ -36,110 +37,119 @@
  	public static final StepSound soundGlassFootstep = new StepSoundStone("stone", 1.0F, 1.0F);
  	public static final StepSound soundClothFootstep = new StepSound("cloth", 1.0F, 1.0F);
  	public static final StepSound soundSandFootstep = new StepSoundSand("sand", 1.0F, 1.0F);
@@ -3999,11 +4140,12 @@
 +	public static final Block axle = (new AxleBlock(99)).setHardness(2.0F).setResistance(5.0F).setStepSound(soundWoodFootstep).setName("axle").setRequiresSelfNotify();
 +	public static final Block gearbox = (new GearboxBlock(100)).setHardness(2.0F).setResistance(5.0F).setStepSound(soundWoodFootstep).setName("gearbox").setRequiresSelfNotify();
 +	public static final Block weatherSensor = (new WeatherSensor(101).setHardness(0.5F).setStepSound(soundStoneFootstep).setName("weatherSensor"));
++	public static final Block millstone = (new MillstoneBlock(102).setHardness(0.5F).setStepSound(soundStoneFootstep).setName("millstone"));
 +
  	public int textureIndex;
  	public final int blockID;
  	protected float hardness;
-@@ -543,7 +551,9 @@
+@@ -543,7 +553,9 @@
  
  	public void harvestBlock(World var1, PlayerEntity var2, int var3, int var4, int var5, int var6) {
  		var2.addStat(StatList.mineBlockStatArray[this.blockID], 1);
@@ -4014,7 +4156,7 @@
  	}
  
  	public boolean canBlockStay(World var1, int var2, int var3, int var4) {
-@@ -582,18 +592,24 @@
+@@ -582,18 +594,24 @@
  		return this.material.getMaterialMobility();
  	}
  
@@ -4268,7 +4410,27 @@
  					if(this.chunkExists(var2 >> 4, var4 >> 4)) {
  						Chunk var6 = this.getChunkFromChunkCoords(var2 >> 4, var4 >> 4);
  						var6.setLightValue(var1, var2 & 15, var3, var4 & 15, var5);
-@@ -747,7 +747,7 @@
+@@ -704,6 +704,9 @@
+ 	}
+ 
+ 	public float getBrightness(int var1, int var2, int var3, int var4) {
++		if(SharedConstants.FULLBRIGHT) {
++			return this.dimension.lightBrightnessTable[15];
++		}
+ 		int var5 = this.getBlockLightValue(var1, var2, var3);
+ 		if(var5 < var4) {
+ 			var5 = var4;
+@@ -713,6 +716,9 @@
+ 	}
+ 
+ 	public float getLightBrightness(int var1, int var2, int var3) {
++		if(SharedConstants.FULLBRIGHT) {
++			return this.dimension.lightBrightnessTable[15];
++		}
+ 		return this.dimension.lightBrightnessTable[this.getBlockLightValue(var1, var2, var3)];
+ 	}
+ 
+@@ -747,7 +753,7 @@
  					}
  				}
  
@@ -4277,7 +4439,7 @@
  
  				while(var11-- >= 0) {
  					if(Double.isNaN(var1.xCoord) || Double.isNaN(var1.yCoord) || Double.isNaN(var1.zCoord)) {
-@@ -936,7 +936,7 @@
+@@ -936,7 +942,7 @@
  		}
  	}
  
@@ -4286,7 +4448,7 @@
  		for(int var2 = 0; var2 < this.worldAccesses.size(); ++var2) {
  			((WorldAccess)this.worldAccesses.get(var2)).obtainEntitySkin(var1);
  		}
-@@ -1044,8 +1044,8 @@
+@@ -1044,8 +1050,8 @@
  		}
  
  		var3 = 1.0F - var3;
@@ -4297,7 +4459,7 @@
  		var3 = 1.0F - var3;
  		return (int)(var3 * 11.0F);
  	}
-@@ -1071,7 +1071,7 @@
+@@ -1071,7 +1077,7 @@
  		var9 *= var4;
  		var10 *= var4;
  		var11 *= var4;
@@ -4306,7 +4468,7 @@
  		float var13;
  		float var14;
  		if(var12 > 0.0F) {
-@@ -1082,7 +1082,7 @@
+@@ -1082,7 +1088,7 @@
  			var11 = var11 * var14 + var13 * (1.0F - var14);
  		}
  
@@ -4315,7 +4477,7 @@
  		if(var13 > 0.0F) {
  			var14 = (var9 * 0.3F + var10 * 0.59F + var11 * 0.11F) * 0.2F;
  			float var15 = 1.0F - var13 * (12.0F / 16.0F);
-@@ -1124,7 +1124,7 @@
+@@ -1124,7 +1130,7 @@
  		float var4 = (float)(this.cloudColor >> 16 & 255L) / 255.0F;
  		float var5 = (float)(this.cloudColor >> 8 & 255L) / 255.0F;
  		float var6 = (float)(this.cloudColor & 255L) / 255.0F;
@@ -4324,7 +4486,7 @@
  		float var8;
  		float var9;
  		if(var7 > 0.0F) {
-@@ -1138,7 +1138,7 @@
+@@ -1138,7 +1144,7 @@
  		var4 *= var3 * 0.9F + 0.1F;
  		var5 *= var3 * 0.9F + 0.1F;
  		var6 *= var3 * 0.85F + 0.15F;
@@ -4333,7 +4495,7 @@
  		if(var8 > 0.0F) {
  			var9 = (var4 * 0.3F + var5 * 0.59F + var6 * 0.11F) * 0.2F;
  			float var10 = 1.0F - var8 * 0.95F;
-@@ -1157,7 +1157,7 @@
+@@ -1157,7 +1163,7 @@
  
  	public int getTopSolidOrLiquidBlock(int var1, int var2) {
  		Chunk var3 = this.getChunkFromBlockCoords(var1, var2);
@@ -4342,7 +4504,7 @@
  		var1 &= 15;
  
  		for(var2 &= 15; var4 > 0; --var4) {
-@@ -1173,7 +1173,7 @@
+@@ -1173,7 +1179,7 @@
  
  	public int findTopSolidBlock(int var1, int var2) {
  		Chunk var3 = this.getChunkFromBlockCoords(var1, var2);
@@ -4351,7 +4513,7 @@
  		var1 &= 15;
  
  		for(var2 &= 15; var4 > 0; --var4) {
-@@ -1202,7 +1202,7 @@
+@@ -1202,7 +1208,7 @@
  
  	public void scheduleUpdateTick(int var1, int var2, int var3, int var4, int var5) {
  		NextTickListEntry var6 = new NextTickListEntry(var1, var2, var3, var4);
@@ -4360,7 +4522,7 @@
  		if(this.scheduledUpdatesAreImmediate) {
  			if(this.checkChunksExist(var6.xCoord - var7, var6.yCoord - var7, var6.zCoord - var7, var6.xCoord + var7, var6.yCoord + var7, var6.zCoord + var7)) {
  				int var8 = this.getBlockId(var6.xCoord, var6.yCoord, var6.zCoord);
-@@ -1343,7 +1343,7 @@
+@@ -1343,7 +1349,7 @@
  		int var3 = MathHelper.floor(var1.posX);
  		int var4 = MathHelper.floor(var1.posZ);
  		byte var5 = 32;
@@ -4369,7 +4531,7 @@
  			var1.lastTickPosX = var1.posX;
  			var1.lastTickPosY = var1.posY;
  			var1.lastTickPosZ = var1.posZ;
-@@ -1771,40 +1771,46 @@
+@@ -1771,40 +1777,46 @@
  			++lightingUpdatesScheduled;
  
  			try {
@@ -4446,7 +4608,7 @@
  		}
  	}
  
-@@ -1848,100 +1854,29 @@
+@@ -1848,100 +1860,29 @@
  			}
  		}
  
@@ -4556,7 +4718,7 @@
  	}
  
  	protected void updateBlocksAndPlayCaveSounds() {
-@@ -1983,7 +1918,7 @@
+@@ -1983,7 +1924,7 @@
  				var6 = this.distHashCounter >> 2;
  				var7 = var6 & 15;
  				var8 = var6 >> 8 & 15;
@@ -4565,7 +4727,7 @@
  				var10 = var14.getBlockID(var7, var9, var8);
  				var7 += var3;
  				var8 += var4;
-@@ -1996,7 +1931,7 @@
+@@ -1996,7 +1937,7 @@
  				}
  			}
  
@@ -4574,7 +4736,7 @@
  				this.distHashCounter = this.distHashCounter * 3 + 1013904223;
  				var6 = this.distHashCounter >> 2;
  				var7 = var3 + (var6 & 15);
-@@ -2015,10 +1950,10 @@
+@@ -2015,10 +1956,10 @@
  				var7 = var6 & 15;
  				var8 = var6 >> 8 & 15;
  				var9 = this.getTopSolidOrLiquidBlock(var7 + var3, var8 + var4);
@@ -4587,7 +4749,7 @@
  						this.setBlockWithNotify(var7 + var3, var9, var8 + var4, Block.snowLayer.blockID);
  					}
  
-@@ -2028,13 +1963,13 @@
+@@ -2028,13 +1969,13 @@
  				}
  			}
  
@@ -4604,7 +4766,7 @@
  				if(Block.tickOnLoad[var15]) {
  					Block.blocksList[var15].updateTick(this, var8 + var3, var10, var9 + var4, this.rand);
  				}
-@@ -2264,6 +2199,20 @@
+@@ -2264,6 +2205,20 @@
  		return var11;
  	}
  
@@ -4625,7 +4787,7 @@
  	public PlayerEntity getPlayerEntityByName(String var1) {
  		for(int var2 = 0; var2 < this.playerEntities.size(); ++var2) {
  			if(var1.equals(((PlayerEntity)this.playerEntities.get(var2)).username)) {
-@@ -2275,7 +2224,7 @@
+@@ -2275,7 +2230,7 @@
  	}
  
  	public byte[] getChunkData(int var1, int var2, int var3, int var4, int var5, int var6) {
@@ -4634,7 +4796,7 @@
  		int var8 = var1 >> 4;
  		int var9 = var3 >> 4;
  		int var10 = var1 + var4 - 1 >> 4;
-@@ -2287,8 +2236,8 @@
+@@ -2287,8 +2242,8 @@
  			var13 = 0;
  		}
  
@@ -4645,7 +4807,7 @@
  		}
  
  		for(int var15 = var8; var15 <= var10; ++var15) {
-@@ -2332,8 +2281,8 @@
+@@ -2332,8 +2287,8 @@
  			var13 = 0;
  		}
  
@@ -4656,7 +4818,7 @@
  		}
  
  		for(int var15 = var8; var15 <= var10; ++var15) {
-@@ -2519,7 +2468,7 @@
+@@ -2519,7 +2474,7 @@
  			}
  		}
  
@@ -4665,7 +4827,7 @@
  	}
  
  	public boolean isAllPlayersFullyAsleep() {
-@@ -2541,29 +2490,8 @@
+@@ -2541,29 +2496,8 @@
  		}
  	}
  
@@ -4696,7 +4858,7 @@
  			return false;
  		} else if(!this.canBlockSeeTheSky(var1, var2, var3)) {
  			return false;
-@@ -2596,5 +2524,9 @@
+@@ -2596,5 +2530,9 @@
  			((WorldAccess)this.worldAccesses.get(var7)).playAuxEffect(var1, var2, var3, var4, var5, var6);
  		}
  
@@ -4889,6 +5051,29 @@
  			var3.setBlockWithNotify(var4, var5, var6, Block.redstoneWire.blockID);
  		}
  
+--- net/minecraft/game/stats/achievement/Achievement.java
++++ net/minecraft/game/stats/achievement/Achievement.java
+@@ -1,5 +1,6 @@
+ package net.minecraft.game.stats.achievement;
+ 
++import com.mojang.nbt.CompoundTag;
+ import net.minecraft.game.item.Item;
+ import net.minecraft.game.item.ItemStack;
+ import net.minecraft.game.stats.FormattableStringStat;
+@@ -17,11 +18,11 @@
+ 	private boolean isSpecial;
+ 
+ 	public Achievement(int var1, String var2, int var3, int var4, Item var5, Achievement var6) {
+-		this(var1, var2, var3, var4, new ItemStack(var5), var6);
++		this(var1, var2, var3, var4, new ItemStack(var5,new CompoundTag()), var6);
+ 	}
+ 
+ 	public Achievement(int var1, String var2, int var3, int var4, Block var5, Achievement var6) {
+-		this(var1, var2, var3, var4, new ItemStack(var5), var6);
++		this(var1, var2, var3, var4, new ItemStack(var5,new CompoundTag()), var6);
+ 	}
+ 
+ 	public Achievement(int var1, String var2, int var3, int var4, ItemStack var5, Achievement var6) {
 --- net/minecraft/game/entity/player/PlayerEntity.java
 +++ net/minecraft/game/entity/player/PlayerEntity.java
 @@ -4,6 +4,8 @@
@@ -5063,7 +5248,51 @@
  		}
 --- net/minecraft/network/packet/Packet.java
 +++ net/minecraft/network/packet/Packet.java
-@@ -187,6 +187,9 @@
+@@ -1,13 +1,13 @@
+ package net.minecraft.network.packet;
+ 
+-import java.io.DataInputStream;
+-import java.io.DataOutputStream;
+-import java.io.EOFException;
+-import java.io.IOException;
++import java.io.*;
+ import java.util.HashMap;
+ import java.util.HashSet;
+ import java.util.Map;
+ import java.util.Set;
++
++import com.mojang.nbt.CompoundTag;
++import com.mojang.nbt.CompressedStreamTools;
+ import net.minecraft.network.NetHandler;
+ 
+ public abstract class Packet {
+@@ -131,6 +131,25 @@
+ 
+ 	public abstract void processPacket(NetHandler var1);
+ 
++	public static void writeCompressedCompoundTag(CompoundTag tag, DataOutputStream dos) throws IOException {
++		ByteArrayOutputStream baos = new ByteArrayOutputStream();
++		CompressedStreamTools.writeGzippedCompoundToOutputStream(tag, baos);
++		byte[] buffer = baos.toByteArray();
++		dos.writeShort((short)buffer.length);
++		dos.write(buffer);
++	}
++
++	public static CompoundTag readCompressedCompoundTag(DataInputStream dis) throws IOException {
++		int length = Short.toUnsignedInt(dis.readShort());
++		if (length == 0) {
++			return null;
++		} else {
++			byte[] data = new byte[length];
++			dis.readFully(data);
++			return CompressedStreamTools.readGzippedCompoundFromInputStream(new ByteArrayInputStream(data));
++		}
++	}
++
+ 	public abstract int getPacketSize();
+ 
+ 	static {
+@@ -187,6 +206,9 @@
  		addIdClassMapping(104, true, false, Packet104WindowItems.class);
  		addIdClassMapping(105, true, false, Packet105UpdateProgressbar.class);
  		addIdClassMapping(106, true, true, Packet106Transaction.class);
@@ -5075,7 +5304,16 @@
  		addIdClassMapping(200, true, false, Packet200Statistic.class);
 --- net/minecraft/client/render/texture/TextureWaterFX.java
 +++ net/minecraft/client/render/texture/TextureWaterFX.java
-@@ -77,9 +77,11 @@
+@@ -2,6 +2,8 @@
+ 
+ import net.minecraft.game.world.block.Block;
+ 
++import java.awt.*;
++
+ public class TextureWaterFX extends TextureFX {
+ 	protected float[] field_1158_g = new float[256];
+ 	protected float[] field_1157_h = new float[256];
+@@ -77,9 +79,11 @@
  				var7 = var11;
  			}
  
@@ -5084,9 +5322,9 @@
 -			this.imageData[var2 * 4 + 2] = (byte)var7;
 +			int average = (var5 + var6 + var7)/3;
 +
-+			this.imageData[var2 * 4 + 0] = (byte)average;
-+			this.imageData[var2 * 4 + 1] = (byte)average;
-+			this.imageData[var2 * 4 + 2] = (byte)average;
++			this.imageData[var2 * 4 + 0] = (byte)Math.min(255,average*2);
++			this.imageData[var2 * 4 + 1] = (byte)Math.min(255,average*2);
++			this.imageData[var2 * 4 + 2] = (byte)Math.min(255,average*2);
  			this.imageData[var2 * 4 + 3] = (byte)var8;
  		}
  
@@ -6469,6 +6707,15 @@
  	private int starGLCallList;
  	private int glSkyList;
  	private int glSkyList2;
+@@ -216,7 +220,7 @@
+ 	}
+ 
+ 	public void loadRenderers() {
+-		Block.leaves.setGraphicsLevel(this.mc.gameSettings.fancyGraphics);
++		Block.leaves.setGraphicsLevel(this.mc.gameSettings.fancyGraphics > 0);
+ 		this.renderDistance = this.mc.gameSettings.renderDistance;
+ 		int var1;
+ 		if(this.worldRenderers != null) {
 @@ -231,7 +235,7 @@
  		}
  
@@ -6526,6 +6773,15 @@
  			var8 = 0.0F;
  			var9 = 0.0F;
  			var10 = 0.0F;
+@@ -755,7 +762,7 @@
+ 
+ 	public void renderClouds(float var1) {
+ 		if(!this.mc.theWorld.dimension.isNether) {
+-			if(this.mc.gameSettings.fancyGraphics) {
++			if(this.mc.gameSettings.fancyGraphics > 0) {
+ 				this.renderCloudsFancy(var1);
+ 			} else {
+ 				GL11.glDisable(GL11.GL_CULL_FACE);
 @@ -781,8 +788,8 @@
  				}
  
@@ -6851,7 +7107,7 @@
  				if(var2 >= var6) {
  					this.relightBlock(var1, var2 + 1, var3);
  				}
-@@ -317,12 +322,12 @@
+@@ -317,15 +322,17 @@
  	}
  
  	public int getBlockMetadata(int var1, int var2, int var3) {
@@ -6866,7 +7122,21 @@
  	}
  
  	public int getSavedLightValue(LightType var1, int var2, int var3, int var4) {
-@@ -400,7 +405,7 @@
++		if(SharedConstants.FULLBRIGHT && var1 == LightType.SKY)
++			return 15;
+ 		return var1 == LightType.SKY ? this.skylightMap.getNibble(var2, var3, var4) : (var1 == LightType.BLOCK ? this.blocklightMap.getNibble(var2, var3, var4) : 0);
+ 	}
+ 
+@@ -344,7 +351,7 @@
+ 	}
+ 
+ 	public int getBlockLightValue(int var1, int var2, int var3, int var4) {
+-		int var5 = this.skylightMap.getNibble(var1, var2, var3);
++		int var5 = SharedConstants.FULLBRIGHT ? 15 : this.skylightMap.getNibble(var1, var2, var3);
+ 		if(var5 > 0) {
+ 			isLit = true;
+ 		}
+@@ -400,7 +407,7 @@
  	}
  
  	public boolean canBlockSeeTheSky(int var1, int var2, int var3) {
@@ -6875,7 +7145,7 @@
  	}
  
  	public TileEntity getChunkBlockTileEntity(int var1, int var2, int var3) {
-@@ -555,92 +560,79 @@
+@@ -555,92 +562,79 @@
  	}
  
  	public int getChunkData(byte[] var1, int var2, int var3, int var4, int var5, int var6, int var7, int var8) {
@@ -7018,7 +7288,7 @@
  				var12 = (var6 - var3) / 2;
  				System.arraycopy(var1, var8, this.blocklightMap.data, var11, var12);
  				var8 += var12;
-@@ -648,14 +640,15 @@
+@@ -648,14 +642,15 @@
  		}
  
  		for(var9 = var2; var9 < var5; ++var9) {
@@ -7036,7 +7306,7 @@
  		return var8;
  	}
  
-@@ -668,6 +661,6 @@
+@@ -668,6 +663,6 @@
  	}
  
  	public void updateBlockMapData() {
@@ -7667,6 +7937,15 @@
  	private int getInventorySlotContainItem(int var1) {
  		for(int var2 = 0; var2 < this.mainInventory.length; ++var2) {
  			if(this.mainInventory[var2] != null && this.mainInventory[var2].id == var1) {
+@@ -95,7 +106,7 @@
+ 			return var3;
+ 		} else {
+ 			if(this.mainInventory[var4] == null) {
+-				this.mainInventory[var4] = new ItemStack(var2, 0, var1.getItemDamage());
++				this.mainInventory[var4] = new ItemStack(var2, 0, var1.getItemDamage(), var1.getData());
+ 			}
+ 
+ 			int var5 = var3;
 @@ -140,6 +151,19 @@
  		}
  	}
@@ -8558,7 +8837,7 @@
 +}
 --- /dev/null
 +++ net/minecraft/util/FastNoiseLite.java
-@@ -1,0 +1,2610 @@
+@@ -1,0 +1,2616 @@
 +// MIT License
 +//
 +// Copyright(c) 2023 Jordan Peck (jordan.me2@gmail.com)
@@ -8699,6 +8978,7 @@
 +    private DomainWarpType mDomainWarpType = DomainWarpType.OpenSimplex2;
 +    private TransformType3D mWarpTransformType3D = TransformType3D.DefaultOpenSimplex2;
 +    private float mDomainWarpAmp = 1.0f;
++    private float mDomainWarpFrequency = mFrequency;
 +
 +    /// <summary>
 +    /// Create new FastNoise object with default seed
@@ -8727,7 +9007,10 @@
 +    /// <remarks>
 +    /// Default: 0.01
 +    /// </remarks>
-+    public void SetFrequency(float frequency) { mFrequency = frequency; }
++    public void SetFrequency(float frequency) {
++        mFrequency = frequency;
++        mDomainWarpFrequency = frequency;
++    }
 +
 +    /// <summary>
 +    /// Sets noise algorithm used for GetNoise(...)
@@ -8860,6 +9143,8 @@
 +    /// Default: 1.0
 +    /// </remarks>
 +    public void SetDomainWarpAmp(float domainWarpAmp) { mDomainWarpAmp = domainWarpAmp; }
++
++    public void SetDomainWarpFreq(float domainWarpFreq) { mDomainWarpFrequency = domainWarpFreq; }
 +
 +
 +    /// <summary>
@@ -10490,7 +10775,7 @@
 +    {
 +        int seed = mSeed;
 +        float amp = mDomainWarpAmp * mFractalBounding;
-+        float freq = mFrequency;
++        float freq = mDomainWarpFrequency;
 +
 +        /*FNLfloat*/ float xs = coord.x;
 +        /*FNLfloat*/ float ys = coord.y;
@@ -10516,7 +10801,7 @@
 +    {
 +        int seed = mSeed;
 +        float amp = mDomainWarpAmp * mFractalBounding;
-+        float freq = mFrequency;
++        float freq = mDomainWarpFrequency;
 +
 +        /*FNLfloat*/ float xs = coord.x;
 +        /*FNLfloat*/ float ys = coord.y;
@@ -11713,22 +11998,24 @@
  		super.drawScreen(var1, var2, var3);
 --- net/minecraft/client/effect/EntityFX.java
 +++ net/minecraft/client/effect/EntityFX.java
-@@ -62,6 +62,14 @@
+@@ -62,6 +62,16 @@
  	protected void entityInit() {
  	}
  
 +	public void windUpdate() {
-+		double delta = worldObj.weatherManager.windSpeed / 100.0;
-+		double x = Math.cos(Math.toRadians(worldObj.weatherManager.windAngle)) * MathHelper.lerp(worldObj.weatherManager.windSpeed / 100.0, 0, 1F);
-+		double z = Math.sin(Math.toRadians(worldObj.weatherManager.windAngle)) * MathHelper.lerp(worldObj.weatherManager.windSpeed / 100.0, 0, 1F);
-+		motionX = MathHelper.lerp(delta,motionX,x);
-+		motionZ = MathHelper.lerp(delta,motionZ,z);
++		if(this.worldObj.getHeightValue((int)Math.floor(this.posX),(int)Math.floor(this.posZ)) < this.posY) {
++			double delta = worldObj.weatherManager.windSpeed / 100.0;
++			double x = Math.cos(Math.toRadians(worldObj.weatherManager.windAngle)) * MathHelper.lerp(worldObj.weatherManager.windSpeed / 100.0, 0, 1F);
++			double z = Math.sin(Math.toRadians(worldObj.weatherManager.windAngle)) * MathHelper.lerp(worldObj.weatherManager.windSpeed / 100.0, 0, 1F);
++			motionX = MathHelper.lerp(delta, motionX, x);
++			motionZ = MathHelper.lerp(delta, motionZ, z);
++		}
 +	}
 +
  	public void onUpdate() {
  		this.prevPosX = this.posX;
  		this.prevPosY = this.posY;
-@@ -76,10 +84,11 @@
+@@ -76,10 +86,11 @@
  		this.motionY *= (double)0.98F;
  		this.motionZ *= (double)0.98F;
  		if(this.onGround) {
@@ -11743,6 +12030,35 @@
  	}
  
  	public void renderParticle(Tessellator var1, float var2, float var3, float var4, float var5, float var6, float var7) {
+--- net/minecraft/network/packet/Packet104WindowItems.java
++++ net/minecraft/network/packet/Packet104WindowItems.java
+@@ -4,6 +4,8 @@
+ import java.io.DataOutputStream;
+ import java.io.IOException;
+ import java.util.List;
++
++import com.mojang.nbt.CompoundTag;
+ import net.minecraft.game.item.ItemStack;
+ import net.minecraft.network.NetHandler;
+ 
+@@ -24,7 +26,8 @@
+ 			if(var4 >= 0) {
+ 				byte var5 = var1.readByte();
+ 				short var6 = var1.readShort();
+-				this.itemStack[var3] = new ItemStack(var4, var5, var6);
++				CompoundTag var7 = readCompressedCompoundTag(var1);
++				this.itemStack[var3] = new ItemStack(var4, var5, var6, var7);
+ 			}
+ 		}
+ 
+@@ -41,6 +44,7 @@
+ 				var1.writeShort((short)this.itemStack[var2].id);
+ 				var1.writeByte((byte)this.itemStack[var2].count);
+ 				var1.writeShort((short)this.itemStack[var2].getItemDamage());
++				writeCompressedCompoundTag(this.itemStack[var2].getData(), var1);
+ 			}
+ 		}
+ 
 --- net/minecraft/client/world/WorldClient.java
 +++ net/minecraft/client/world/WorldClient.java
 @@ -14,6 +14,7 @@
@@ -13140,7 +13456,12 @@
  
 --- net/minecraft/game/item/Item.java
 +++ net/minecraft/game/item/Item.java
-@@ -4,6 +4,7 @@
+@@ -1,9 +1,12 @@
+ package net.minecraft.game.item;
+ 
+ import java.util.Random;
++
++import com.mojang.nbt.CompoundTag;
  import net.minecraft.game.entity.Entity;
  import net.minecraft.game.entity.LivingEntity;
  import net.minecraft.game.entity.player.PlayerEntity;
@@ -13148,7 +13469,7 @@
  import net.minecraft.game.stats.StatCollector;
  import net.minecraft.game.stats.StatList;
  import net.minecraft.game.world.World;
-@@ -12,115 +13,121 @@
+@@ -12,115 +15,121 @@
  
  public class Item {
  	protected static Random random = new Random();
@@ -13378,7 +13699,7 @@
  	private int maxDamage = 0;
  	protected int textureIndex;
  	protected boolean toolGrip = false;
-@@ -129,12 +136,12 @@
+@@ -129,12 +138,12 @@
  	private String name;
  
  	protected Item(int var1) {
@@ -13394,7 +13715,7 @@
  	}
  
  	public Item setTextureCoord(int var1) {
-@@ -148,7 +155,7 @@
+@@ -148,7 +157,7 @@
  	}
  
  	public Item setTextureCoord(int var1, int var2) {
@@ -13403,7 +13724,7 @@
  		return this;
  	}
  
-@@ -284,5 +291,9 @@
+@@ -284,5 +293,13 @@
  
  	static {
  		StatList.initItems();
@@ -13411,6 +13732,10 @@
 +
 +	public int[] getCreativeDamageValues() {
 +		return new int[]{0};
++	}
++
++	public CompoundTag getDefaultTag() {
++		return new CompoundTag();
  	}
  }
 --- net/minecraft/client/render/RenderManager.java
@@ -13515,9 +13840,18 @@
  			}
  
  			if(var23 / 2 % 2 == 0) {
+@@ -247,7 +248,7 @@
+ 	}
+ 
+ 	public void doRenderShadowAndFire(Entity var1, double var2, double var4, double var6, float var8, float var9) {
+-		if(this.renderManager.options.fancyGraphics && this.shadowSize > 0.0F) {
++		if(this.renderManager.options.fancyGraphics > 0 && this.shadowSize > 0.0F) {
+ 			double var10 = this.renderManager.func_851_a(var1.posX, var1.posY, var1.posZ);
+ 			float var12 = (float)((1.0D - var10 / 256.0D) * (double)this.field_194_c);
+ 			if(var12 > 0.0F) {
 --- /dev/null
 +++ net/minecraft/util/SharedConstants.java
-@@ -1,0 +1,22 @@
+@@ -1,0 +1,23 @@
 +package net.minecraft.util;
 +
 +public class SharedConstants {
@@ -13525,6 +13859,7 @@
 +    public static String VERSION = "Order of the Talon "+SHORTENED_VERSION;
 +    public static boolean PANORAMA_SCREENSHOT_MODE = false;
 +    public static boolean DEBUG = true;
++    public static boolean FULLBRIGHT = false;
 +    public static int BLOCK_LIMIT = 16384;
 +    public static int CHUNK_BIT_OFFSET = 8;
 +    public static int CHUNK_HEIGHT = 256;
@@ -13618,18 +13953,17 @@
  	}
  
  	public abstract void displayUnexpectedThrowable(UnexpectedThrowable var1);
-@@ -201,7 +210,9 @@
+@@ -201,7 +210,8 @@
  			Display.setDisplayMode(new DisplayMode(this.displayWidth, this.displayHeight));
  		}
  
 -		Display.setTitle("Minecraft Minecraft Beta 1.7.3");
 +		Display.setTitle("Minecraft "+ SharedConstants.VERSION);
 +		Display.setResizable(true);
-+		Display.setVSyncEnabled(true);
  
  		try {
  			Display.create();
-@@ -264,6 +275,10 @@
+@@ -264,6 +274,10 @@
  		this.textureRegistry.registerTextureFX(new TextureLavaFlowFX());
  		this.textureRegistry.registerTextureFX(new TextureFlamesFX(0));
  		this.textureRegistry.registerTextureFX(new TextureFlamesFX(1));
@@ -13640,7 +13974,21 @@
  		this.worldRenderer = new WorldRenderer(this, this.textureRegistry);
  		GL11.glViewport(0, 0, this.displayWidth, this.displayHeight);
  		this.effectRenderer = new EffectRenderer(this.theWorld, this.textureRegistry);
-@@ -529,7 +544,7 @@
+@@ -515,9 +529,12 @@
+ 						}
+ 					}
+ 
++					Display.setVSyncEnabled(this.gameSettings.limitFramerate == 3);
++
+ 					long var24 = System.nanoTime() - var23;
+ 					this.checkGLError("Pre render");
+-					RenderBlocks.fancyGrass = this.gameSettings.fancyGraphics;
++					RenderBlocks.fancyGrass = this.gameSettings.fancyGraphics > 0;
++					RenderBlocks.fabulous = this.gameSettings.fancyGraphics > 1;
+ 					this.sndManager.func_338_a(this.thePlayer, this.timer.renderPartialTicks);
+ 					GL11.glEnable(GL11.GL_TEXTURE_2D);
+ 					if(this.theWorld != null) {
+@@ -529,7 +546,7 @@
  					}
  
  					if(this.thePlayer != null && this.thePlayer.isEntityInsideOpaqueBlock()) {
@@ -13649,7 +13997,7 @@
  					}
  
  					if(!this.skipRenderWorld) {
-@@ -640,6 +655,10 @@
+@@ -640,6 +657,10 @@
  	}
  
  	private void displayDebugInfo(long var1) {
@@ -13660,7 +14008,7 @@
  		long var3 = 16666666L;
  		if(this.prevFrameTime == -1L) {
  			this.prevFrameTime = System.nanoTime();
-@@ -737,7 +756,8 @@
+@@ -737,7 +758,8 @@
  			}
  
  			this.inGameHasFocus = false;
@@ -13670,7 +14018,7 @@
  		}
  	}
  
-@@ -1021,7 +1041,7 @@
+@@ -1021,7 +1043,7 @@
  												}
  
  												if(Keyboard.getEventKey() == Keyboard.KEY_F5) {
@@ -13679,7 +14027,7 @@
  												}
  
  												if(Keyboard.getEventKey() == Keyboard.KEY_F8) {
-@@ -1029,14 +1049,24 @@
+@@ -1029,14 +1051,24 @@
  												}
  
  												if(Keyboard.getEventKey() == this.gameSettings.keyBindInventory.keyCode) {
@@ -13706,7 +14054,7 @@
  													this.displayGuiScreen(new ChatScreen());
  												}
  											}
-@@ -1044,6 +1074,11 @@
+@@ -1044,6 +1076,11 @@
  											for(int var6 = 0; var6 < 9; ++var6) {
  												if(Keyboard.getEventKey() == Keyboard.KEY_1 + var6) {
  													this.thePlayer.inventory.currentItem = var6;
@@ -13718,7 +14066,7 @@
  												}
  											}
  
-@@ -1236,6 +1271,7 @@
+@@ -1236,6 +1273,7 @@
  	}
  
  	public void changeWorld(World var1, String var2, PlayerEntity var3) {
@@ -13726,7 +14074,7 @@
  		this.statFileWriter.func_27175_b();
  		this.statFileWriter.syncStats();
  		this.renderViewEntity = null;
-@@ -1361,8 +1397,11 @@
+@@ -1361,8 +1399,11 @@
  			this.sndManager.addMusic(var1, var2);
  		} else if(var4.equalsIgnoreCase("newmusic")) {
  			this.sndManager.addMusic(var1, var2);
@@ -13739,7 +14087,7 @@
  	}
  
  	public OpenGlCapsChecker getOpenGlCapsChecker() {
-@@ -1450,15 +1489,17 @@
+@@ -1450,15 +1491,17 @@
  	}
  
  	public static void startMainThread(String var0, String var1, String var2) {
@@ -13759,7 +14107,16 @@
  		Thread var8 = new Thread(var7, "Minecraft main thread");
  		var8.setPriority(10);
  		var7.minecraftUri = "www.minecraft.net";
-@@ -1516,8 +1557,40 @@
+@@ -1503,7 +1546,7 @@
+ 	}
+ 
+ 	public static boolean isFancyGraphicsEnabled() {
+-		return theMinecraft != null && theMinecraft.gameSettings.fancyGraphics;
++		return theMinecraft != null && theMinecraft.gameSettings.fancyGraphics > 0;
+ 	}
+ 
+ 	public static boolean isAmbientOcclusionEnabled() {
+@@ -1516,8 +1559,40 @@
  
  	public boolean lineIsCommand(String var1) {
  		if(var1.startsWith("/")) {
@@ -13802,9 +14159,10 @@
  }
 --- /dev/null
 +++ net/minecraft/network/packet/Packet107CreativeSetSlot.java
-@@ -1,0 +1,57 @@
+@@ -1,0 +1,60 @@
 +package net.minecraft.network.packet;
 +
++import com.mojang.nbt.CompoundTag;
 +import net.minecraft.game.item.ItemStack;
 +import net.minecraft.network.NetHandler;
 +
@@ -13832,7 +14190,8 @@
 +        if(var2 >= 0) {
 +            byte var3 = var1.readByte();
 +            short var4 = var1.readShort();
-+            this.stack = new ItemStack(var2, var3, var4);
++            CompoundTag tag = readCompressedCompoundTag(var1);
++            this.stack = new ItemStack(var2, var3, var4, tag);
 +        } else {
 +            this.stack = null;
 +        }
@@ -13847,6 +14206,7 @@
 +            var1.writeShort(this.stack.id);
 +            var1.writeByte(this.stack.count);
 +            var1.writeShort(this.stack.getItemDamage());
++            writeCompressedCompoundTag(this.stack.getData(),var1);
 +        }
 +    }
 +
@@ -14343,9 +14703,134 @@
  			var4.skylightMap = new NibbleArray(var4.blocks.length);
  			var4.generateSkylightMap();
  		}
+--- net/minecraft/network/packet/Packet5PlayerInventory.java
++++ net/minecraft/network/packet/Packet5PlayerInventory.java
+@@ -3,6 +3,8 @@
+ import java.io.DataInputStream;
+ import java.io.DataOutputStream;
+ import java.io.IOException;
++
++import com.mojang.nbt.CompoundTag;
+ import net.minecraft.game.item.ItemStack;
+ import net.minecraft.network.NetHandler;
+ 
+@@ -11,6 +13,7 @@
+ 	public int slot;
+ 	public int itemID;
+ 	public int itemDamage;
++	public CompoundTag itemData;
+ 
+ 	public Packet5PlayerInventory() {
+ 	}
+@@ -20,6 +23,7 @@
+ 		this.slot = var1.readShort();
+ 		this.itemID = var1.readShort();
+ 		this.itemDamage = var1.readShort();
++		this.itemData = readCompressedCompoundTag(var1);
+ 	}
+ 
+ 	public void writePacketData(DataOutputStream var1) throws IOException {
+@@ -27,6 +31,7 @@
+ 		var1.writeShort(this.slot);
+ 		var1.writeShort(this.itemID);
+ 		var1.writeShort(this.itemDamage);
++		writeCompressedCompoundTag(this.itemData,var1);
+ 	}
+ 
+ 	public void processPacket(NetHandler var1) {
+@@ -43,9 +48,11 @@
+ 		if(var3 == null) {
+ 			this.itemID = -1;
+ 			this.itemDamage = 0;
++			this.itemData = new CompoundTag();
+ 		} else {
+ 			this.itemID = var3.id;
+ 			this.itemDamage = var3.getItemDamage();
++			this.itemData = var3.getData();
+ 		}
+ 
+ 	}
 --- net/minecraft/game/item/ItemStack.java
 +++ net/minecraft/game/item/ItemStack.java
-@@ -204,7 +204,7 @@
+@@ -13,11 +13,16 @@
+ 	public int pickupTimer;
+ 	public int id;
+ 	private int damage;
++	private CompoundTag tag;
+ 
+ 	public ItemStack(Block var1) {
+ 		this((Block)var1, 1);
+ 	}
+ 
++	public ItemStack(Block var1, CompoundTag tag) {
++		this(var1.blockID, 1, 0, tag);
++	}
++
+ 	public ItemStack(Block var1, int var2) {
+ 		this(var1.blockID, var2, 0);
+ 	}
+@@ -30,6 +35,10 @@
+ 		this(var1.itemID, 1, 0);
+ 	}
+ 
++	public ItemStack(Item var1, CompoundTag tag) {
++		this(var1.itemID, 1, 0, tag);
++	}
++
+ 	public ItemStack(Item var1, int var2) {
+ 		this(var1.itemID, var2, 0);
+ 	}
+@@ -39,10 +48,14 @@
+ 	}
+ 
+ 	public ItemStack(int var1, int var2, int var3) {
+-		this.count = 0;
++		this(var1,var2,var3,Item.itemsList[var1].getDefaultTag());
++	}
++
++	public ItemStack(int var1, int var2, int var3, CompoundTag var4) {
+ 		this.id = var1;
+ 		this.count = var2;
+ 		this.damage = var3;
++		this.tag = var4;
+ 	}
+ 
+ 	public ItemStack(CompoundTag var1) {
+@@ -52,7 +65,7 @@
+ 
+ 	public ItemStack splitStack(int var1) {
+ 		this.count -= var1;
+-		return new ItemStack(this.id, var1, this.damage);
++		return new ItemStack(this.id, var1, this.damage, this.tag);
+ 	}
+ 
+ 	public Item getItem() {
+@@ -84,6 +97,7 @@
+ 		var1.setShort("id", (short)this.id);
+ 		var1.setByte("Count", (byte)this.count);
+ 		var1.setShort("Damage", (short)this.damage);
++		var1.setCompoundTag("Tag",tag);
+ 		return var1;
+ 	}
+ 
+@@ -91,6 +105,7 @@
+ 		this.id = var1.getShort("id");
+ 		this.count = var1.getByte("Count");
+ 		this.damage = var1.getShort("Damage");
++		this.tag = var1.getCompoundTag("Tag");
+ 	}
+ 
+ 	public int getMaxStackSize() {
+@@ -180,7 +195,7 @@
+ 	}
+ 
+ 	public ItemStack copy() {
+-		return new ItemStack(this.id, this.count, this.damage);
++		return new ItemStack(this.id, this.count, this.damage, this.tag);
+ 	}
+ 
+ 	public static boolean areItemStacksEqual(ItemStack var0, ItemStack var1) {
+@@ -204,7 +219,7 @@
  	}
  
  	public String toString() {
@@ -14354,6 +14839,24 @@
  	}
  
  	public void updateAnimation(World var1, Entity var2, int var3, boolean var4) {
+@@ -222,5 +237,17 @@
+ 
+ 	public boolean isStackEqual(ItemStack var1) {
+ 		return this.id == var1.id && this.count == var1.count && this.damage == var1.damage;
++	}
++
++	public CompoundTag getData() {
++		return this.tag;
++	}
++
++	public void setData(CompoundTag tag) {
++		if (tag == null) {
++			tag = new CompoundTag();
++		}
++
++		this.tag = tag;
+ 	}
+ }
 --- net/minecraft/game/world/save/SaveFormatOldServer.java
 +++ net/minecraft/game/world/save/SaveFormatOldServer.java
 @@ -4,6 +4,9 @@
@@ -15778,6 +16281,49 @@
  	}
  
  	public int quantityDropped(Random var1) {
+--- net/minecraft/network/packet/Packet21PickupSpawn.java
++++ net/minecraft/network/packet/Packet21PickupSpawn.java
+@@ -3,6 +3,8 @@
+ import java.io.DataInputStream;
+ import java.io.DataOutputStream;
+ import java.io.IOException;
++
++import com.mojang.nbt.CompoundTag;
+ import net.minecraft.game.entity.misc.ItemEntity;
+ import net.minecraft.network.NetHandler;
+ import net.minecraft.util.MathHelper;
+@@ -18,6 +20,7 @@
+ 	public int itemID;
+ 	public int count;
+ 	public int itemDamage;
++	public CompoundTag tag;
+ 
+ 	public Packet21PickupSpawn() {
+ 	}
+@@ -27,6 +30,7 @@
+ 		this.itemID = var1.item.id;
+ 		this.count = var1.item.count;
+ 		this.itemDamage = var1.item.getItemDamage();
++		this.tag = var1.item.getData();
+ 		this.xPosition = MathHelper.floor(var1.posX * 32.0D);
+ 		this.yPosition = MathHelper.floor(var1.posY * 32.0D);
+ 		this.zPosition = MathHelper.floor(var1.posZ * 32.0D);
+@@ -40,6 +44,7 @@
+ 		this.itemID = var1.readShort();
+ 		this.count = var1.readByte();
+ 		this.itemDamage = var1.readShort();
++		this.tag = readCompressedCompoundTag(var1);
+ 		this.xPosition = var1.readInt();
+ 		this.yPosition = var1.readInt();
+ 		this.zPosition = var1.readInt();
+@@ -53,6 +58,7 @@
+ 		var1.writeShort(this.itemID);
+ 		var1.writeByte(this.count);
+ 		var1.writeShort(this.itemDamage);
++		writeCompressedCompoundTag(this.tag,var1);
+ 		var1.writeInt(this.xPosition);
+ 		var1.writeInt(this.yPosition);
+ 		var1.writeInt(this.zPosition);
 --- net/minecraft/game/entity/LivingEntity.java
 +++ net/minecraft/game/entity/LivingEntity.java
 @@ -68,6 +68,10 @@
@@ -15911,6 +16457,15 @@
  			this.worldClient.remoteWorld = true;
  			this.mc.changeWorld1(this.worldClient);
  			this.mc.thePlayer.dimension = var1.dimension;
+@@ -662,7 +662,7 @@
+ 	public void handlePlayerInventory(Packet5PlayerInventory var1) {
+ 		Entity var2 = this.getEntityByID(var1.entityID);
+ 		if(var2 != null) {
+-			var2.outfitWithItem(var1.slot, var1.itemID, var1.itemDamage);
++			var2.outfitWithItem(var1.slot, var1.itemID, var1.itemDamage, var1.itemData);
+ 		}
+ 
+ 	}
 @@ -682,11 +682,11 @@
  		}
  
@@ -16058,16 +16613,39 @@
  			this.itemRenderer.renderOverlays(var1);
  			this.hurtCameraEffect(var1);
  		}
-@@ -599,7 +624,7 @@
+@@ -538,7 +563,7 @@
+ 			GL11.glEnable(GL11.GL_BLEND);
+ 			GL11.glDisable(GL11.GL_CULL_FACE);
+ 			GL11.glBindTexture(GL11.GL_TEXTURE_2D, this.mc.textureRegistry.getTexture("/terrain.png"));
+-			if(this.mc.gameSettings.fancyGraphics) {
++			if(this.mc.gameSettings.fancyGraphics > 0) {
+ 				if(this.mc.gameSettings.ambientOcclusion) {
+ 					GL11.glShadeModel(GL11.GL_SMOOTH);
+ 				}
+@@ -599,8 +624,8 @@
  	}
  
  	private void addRainParticles() {
 -		float var1 = this.mc.theWorld.getRainingStrength(1.0F);
-+		float var1 = mc.theWorld.weatherManager.rainIntensity();
- 		if(!this.mc.gameSettings.fancyGraphics) {
+-		if(!this.mc.gameSettings.fancyGraphics) {
++		float var1 = 1.0F; // intensity
++		if(this.mc.gameSettings.fancyGraphics == 0) {
  			var1 /= 2.0F;
  		}
-@@ -645,9 +670,9 @@
+ 
+@@ -622,7 +647,10 @@
+ 				int var17 = var6 + this.random.nextInt(var7) - this.random.nextInt(var7);
+ 				int var18 = var3.getTopSolidOrLiquidBlock(var16, var17);
+ 				int var19 = var3.getBlockId(var16, var18 - 1, var17);
+-				if(var18 <= var5 + var7 && var18 >= var5 - var7 && var3.getBiomeSource().getBiomeGenAt(var16, var17).canSpawnLightningBolt()) {
++				Biome b = var3.getBiomeSource().getBiomeGenAt(var16, var17);
++				double h = var3.weatherManager.getHumidity(var16,var17);
++				if(var18 <= var5 + var7 && var18 >= var5 - var7 && b.canSpawnLightningBolt() && h >= 50) {
++					var1 = MathHelper.lerp(Math.min(1F,(float)(h-50)/15F),0F,1.0F);
+ 					float var20 = this.random.nextFloat();
+ 					float var21 = this.random.nextFloat();
+ 					if(var19 > 0) {
+@@ -645,9 +673,9 @@
  			if(var14 > 0 && this.random.nextInt(3) < this.rainSoundCounter++) {
  				this.rainSoundCounter = 0;
  				if(var10 > var2.posY + 1.0D && var3.getTopSolidOrLiquidBlock(MathHelper.floor(var2.posX), MathHelper.floor(var2.posZ)) > MathHelper.floor(var2.posY)) {
@@ -16079,25 +16657,48 @@
  				}
  			}
  
-@@ -655,7 +680,7 @@
+@@ -655,8 +683,9 @@
  	}
  
  	protected void renderRainSnow(float var1) {
 -		float var2 = this.mc.theWorld.getRainingStrength(var1);
-+		float var2 = mc.theWorld.weatherManager.rainIntensity();
- 		if(var2 > 0.0F) {
+-		if(var2 > 0.0F) {
++		//if(true) return;
++		float var2 = 1.0F; // intensity
++		//if(var2 > 0.0F) {
  			LivingEntity var3 = this.mc.renderViewEntity;
  			World var4 = this.mc.theWorld;
-@@ -741,7 +766,7 @@
- 				}
- 			}
- 
--			GL11.glBindTexture(GL11.GL_TEXTURE_2D, this.mc.textureRegistry.getTexture("/environment/rain.png"));
-+			GL11.glBindTexture(GL11.GL_TEXTURE_2D, this.mc.textureRegistry.getTexture(this.mc.theWorld.weatherManager.currentWeather.precipitationTexture));
- 			if(this.mc.gameSettings.fancyGraphics) {
+ 			int var5 = MathHelper.floor(var3.posX);
+@@ -674,7 +703,7 @@
+ 			double var13 = var3.lastTickPosZ + (var3.posZ - var3.lastTickPosZ) * (double)var1;
+ 			int var15 = MathHelper.floor(var11);
+ 			byte var16 = 5;
+-			if(this.mc.gameSettings.fancyGraphics) {
++			if(this.mc.gameSettings.fancyGraphics > 0) {
  				var16 = 10;
  			}
-@@ -771,7 +796,7 @@
+ 
+@@ -742,7 +771,7 @@
+ 			}
+ 
+ 			GL11.glBindTexture(GL11.GL_TEXTURE_2D, this.mc.textureRegistry.getTexture("/environment/rain.png"));
+-			if(this.mc.gameSettings.fancyGraphics) {
++			if(this.mc.gameSettings.fancyGraphics > 0) {
+ 				var16 = 10;
+ 			}
+ 
+@@ -751,7 +780,9 @@
+ 			for(var19 = var5 - var16; var19 <= var5 + var16; ++var19) {
+ 				for(var20 = var7 - var16; var20 <= var7 + var16; ++var20) {
+ 					var21 = var17[var18++];
+-					if(var21.canSpawnLightningBolt()) {
++					double h = var4.weatherManager.getHumidity(var19,var20);
++					if(var21.canSpawnLightningBolt() && h >= 50) {
++						var2 = MathHelper.lerp(Math.min(1F,(float)(h-50)/15F),0F,1.0F);
+ 						var22 = var4.getTopSolidOrLiquidBlock(var19, var20);
+ 						var23 = var6 - var16;
+ 						var24 = var6 + var16;
+@@ -771,7 +802,7 @@
  							double var39 = (double)((float)var20 + 0.5F) - var3.posZ;
  							float var40 = MathHelper.sqrt(var38 * var38 + var39 * var39) / (float)var16;
  							var8.startDrawingQuads();
@@ -16106,7 +16707,21 @@
  							GL11.glColor4f(var32, var32, var32, ((1.0F - var40 * var40) * 0.5F + 0.5F) * var2);
  							var8.setTranslationD(-var9 * 1.0D, -var11 * 1.0D, -var13 * 1.0D);
  							var8.addVertexWithUV((double)(var19 + 0), (double)var23, (double)var20 + 0.5D, (double)(0.0F * var37), (double)((float)var23 * var37 / 4.0F + var26 * var37));
-@@ -822,7 +847,7 @@
+@@ -788,11 +819,12 @@
+ 					}
+ 				}
+ 			}
++			var2 = 1.0F;
+ 
+ 			GL11.glEnable(GL11.GL_CULL_FACE);
+ 			GL11.glDisable(GL11.GL_BLEND);
+ 			GL11.glAlphaFunc(GL11.GL_GREATER, 0.1F);
+-		}
++		//}
+ 	}
+ 
+ 	public void func_905_b() {
+@@ -822,7 +854,7 @@
  		this.fogColorRed += (var6 - this.fogColorRed) * var4;
  		this.fogColorGreen += (var7 - this.fogColorGreen) * var4;
  		this.fogColorBlue += (var8 - this.fogColorBlue) * var4;
@@ -16115,7 +16730,7 @@
  		float var11;
  		float var12;
  		if(var10 > 0.0F) {
-@@ -833,7 +858,7 @@
+@@ -833,7 +865,7 @@
  			this.fogColorBlue *= var12;
  		}
  
@@ -16124,7 +16739,7 @@
  		if(var11 > 0.0F) {
  			var12 = 1.0F - var11 * 0.5F;
  			this.fogColorRed *= var12;
-@@ -873,6 +898,7 @@
+@@ -873,6 +905,7 @@
  	}
  
  	private void setupFog(int var1, float var2) {
@@ -16132,7 +16747,7 @@
  		LivingEntity var3 = this.mc.renderViewEntity;
  		GL11.glFog(GL11.GL_FOG_COLOR, this.func_908_a(this.fogColorRed, this.fogColorGreen, this.fogColorBlue, 1.0F));
  		GL11.glNormal3f(0.0F, -1.0F, 0.0F);
-@@ -918,8 +944,8 @@
+@@ -918,8 +951,8 @@
  			}
  		} else {
  			GL11.glFogi(GL11.GL_FOG_MODE, GL11.GL_LINEAR);
@@ -17393,14 +18008,14 @@
 +			renderDebugText(var8, "f: " + (MathHelper.floor((double)(this.mc.thePlayer.rotationYaw * 4.0F / 360.0F) + 0.5D) & 3), 2, 8, 14737632);
 +			Biome biome = this.mc.theWorld.getBiomeSource().getBiomeGenAt((int)this.mc.thePlayer.posX,(int)this.mc.thePlayer.posZ);
 +			if(this.mc.theWorld.getBiomeSource().temperature != null) {
-+				renderDebugText(var8, "Biome: " + biome.name + " (T: " + String.format("%.2f", this.mc.theWorld.getBiomeSource().temperature[0]) + " H: " + String.format("%.2f", this.mc.theWorld.getBiomeSource().humidity[0]) + ")", 2, 9, 14737632);
++				double humidity = this.mc.theWorld.getBiomeSource().humidity[0]*100.0;
++				renderDebugText(var8, "Biome: " + biome.name + " (T: " + String.format("%.2f", this.mc.theWorld.getBiomeSource().temperature[0]*100.0) + "% H: " + String.format("%.2f", humidity) + "%)", 2, 9, 14737632);
 +			} else {
 +				renderDebugText(var8, "Biome: " + biome.name + " (No Climate Data)", 2, 9, 14737632);
 +			}
 +			WeatherManager wm = this.mc.theWorld.weatherManager;
-+			if(wm.currentWeather != null) {
-+				renderDebugText(var8, "Weather: " + wm.currentWeather.name + " (" + (wm.weatherDuration / 20) + "s I:" + wm.weatherIntensity + " P:" + wm.weatherPower + ")", 2, 10, 14737632);
-+			}
++			double humidity = wm.getHumidity((int)this.mc.thePlayer.posX,(int)this.mc.thePlayer.posZ);
++			renderDebugText(var8, "Weather: "+String.format("%.2f",humidity)+"% humidity", 2, 10, 14737632);
 +			renderDebugText(var8,"Wind: "+String.format("%.2f",wm.windAngle)+" degrees "+String.format("%.2f",wm.windSpeed)+"% Speed", 2,11, 14737632);
  			GL11.glPopMatrix();
 +		} else {
@@ -17730,6 +18345,15 @@
  		for(int var1 = 0; var1 < 8; ++var1) {
  			float var2 = ((float)((var1 >> 0) % 2) - 0.5F) * this.width * 0.9F;
  			float var3 = ((float)((var1 >> 1) % 2) - 0.5F) * 0.1F;
+@@ -1032,7 +1047,7 @@
+ 	public void updateCloak() {
+ 	}
+ 
+-	public void outfitWithItem(int var1, int var2, int var3) {
++	public void outfitWithItem(int var1, int var2, int var3, CompoundTag var4) {
+ 	}
+ 
+ 	public boolean isBurning() {
 @@ -1078,6 +1093,7 @@
  	}
  

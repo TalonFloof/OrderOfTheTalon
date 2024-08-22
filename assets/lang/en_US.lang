@@ -98,6 +98,7 @@ options.difficulty.easy=Easy
 options.difficulty.normal=Normal
 options.difficulty.hard=Hard
 options.graphics=Graphics
+options.graphics.fabulous=Fabulous!
 options.graphics.fancy=Fancy
 options.graphics.fast=Fast
 options.guiScale=GUI Scale
@@ -110,6 +111,7 @@ options.advancedOpengl=Advanced OpenGL
 performance.max=Max FPS
 performance.balanced=Balanced
 performance.powersaver=Power saver
+performance.vsync=VSync
 
 controls.title=Controls
 
@@ -334,6 +336,8 @@ tile.pistonStickyBase.name=Sticky Piston
 tile.pistonStickyBase.desc=
 tile.granite.name=Granite
 tile.limestone.name=Limestone
+tile.axle.name=Axle
+tile.gearbox.name=Gearbox
 
 item.shovelIron.name=Iron Shovel
 item.shovelIron.desc=
@@ -584,3 +588,5 @@ item.beefRaw.name=Raw Beef
 item.beefCooked.name=Steak
 item.chickenRaw.name=Raw Chicken
 item.chickenCooked.name=Cooked Chicken
+item.gear.name=Gear
+item.windMill.name=Wind Mill
