@@ -470,7 +470,7 @@
 +            powered = false;
 +        }
 +        if(powered) {
-+            world.playSoundEffect((double) i + 0.5D, (double) j + 0.5D, (double) k + 0.5D, "random.explode", 0.05F, 1.0F);
++            world.playSoundEffect((double) i + 0.5D, (double) j + 0.5D, (double) k + 0.5D, "random.chestopen", 0.5F, 0.5F);
 +        }
 +        int iFacing = world.getBlockMetadata(i, j, k) & 7;
 +        for(int f=0; f < 6; f++) {
@@ -1076,6 +1076,51 @@
  			float var12 = (0.0F - var3) / 2.0F;
  			float var13 = var12 + var3;
  			float var14 = 0.0F - var3 / 2.0F;
+--- /dev/null
++++ com/moandjiezana/toml/LiteralStringValueReader.java
+@@ -1,0 +1,42 @@
++package com.moandjiezana.toml;
++
++import java.util.concurrent.atomic.AtomicInteger;
++
++
++class LiteralStringValueReader implements ValueReader {
++
++  static final LiteralStringValueReader LITERAL_STRING_VALUE_READER = new LiteralStringValueReader();
++  
++  @Override
++  public boolean canRead(String s) {
++    return s.startsWith("'");
++  }
++
++  @Override
++  public Object read(String s, AtomicInteger index, Context context) {
++    int startLine = context.line.get();
++    boolean terminated = false;
++    int startIndex = index.incrementAndGet();
++    
++    for (int i = index.get(); i < s.length(); i = index.incrementAndGet()) {
++      char c = s.charAt(i);
++      
++      if (c == '\'') {
++        terminated = true;
++        break;
++      }
++    }
++    
++    if (!terminated) {
++      Results.Errors errors = new Results.Errors();
++      errors.unterminated(context.identifier.getName(), s.substring(startIndex), startLine);
++      return errors;
++    }
++    
++    String substring = s.substring(startIndex, index.get());
++    
++    return substring;
++  }
++
++  private LiteralStringValueReader() {}
++}
 --- net/minecraft/client/gui/Gui.java
 +++ net/minecraft/client/gui/Gui.java
 @@ -88,6 +88,10 @@
@@ -1294,6 +1339,114 @@
  					}
  				}
  			}
+--- /dev/null
++++ com/moandjiezana/toml/NumberValueReaderWriter.java
+@@ -1,0 +1,105 @@
++package com.moandjiezana.toml;
++
++import java.util.concurrent.atomic.AtomicInteger;
++
++class NumberValueReaderWriter implements ValueReader, ValueWriter {
++  static final NumberValueReaderWriter NUMBER_VALUE_READER_WRITER = new NumberValueReaderWriter();
++  
++  @Override
++  public boolean canRead(String s) {
++    char firstChar = s.charAt(0);
++    
++    return firstChar == '+' || firstChar == '-' || Character.isDigit(firstChar);
++  }
++
++  @Override
++  public Object read(String s, AtomicInteger index, Context context) {
++    boolean signable = true;
++    boolean dottable = false;
++    boolean exponentable = false;
++    boolean terminatable = false;
++    boolean underscorable = false;
++    String type = "";
++    StringBuilder sb = new StringBuilder();
++
++    for (int i = index.get(); i < s.length(); i = index.incrementAndGet()) {
++      char c = s.charAt(i);
++      boolean notLastChar = s.length() > i + 1;
++
++      if (Character.isDigit(c)) {
++        sb.append(c);
++        signable = false;
++        terminatable = true;
++        if (type.isEmpty()) {
++          type = "integer";
++          dottable = true;
++        }
++        underscorable = notLastChar;
++        exponentable = !type.equals("exponent");
++      } else if ((c == '+' || c == '-') && signable && notLastChar) {
++        signable = false;
++        terminatable = false;
++        if (c == '-') {
++          sb.append('-');
++        }
++      } else if (c == '.' && dottable && notLastChar) {
++        sb.append('.');
++        type = "float";
++        terminatable = false;
++        dottable = false;
++        exponentable = false;
++        underscorable = false;
++      } else if ((c == 'E' || c == 'e') && exponentable && notLastChar) {
++        sb.append('E');
++        type = "exponent";
++        terminatable = false;
++        signable = true;
++        dottable = false;
++        exponentable = false;
++        underscorable = false;
++      } else if (c == '_' && underscorable && notLastChar && Character.isDigit(s.charAt(i + 1))) {
++        underscorable = false;
++      } else {
++        if (!terminatable) {
++          type = "";
++        }
++        index.decrementAndGet();
++        break;
++      }
++    }
++
++    if (type.equals("integer")) {
++      return Long.valueOf(sb.toString());
++    } else if (type.equals("float")) {
++      return Double.valueOf(sb.toString());
++    } else if (type.equals("exponent")) {
++      String[] exponentString = sb.toString().split("E");
++      
++      return Double.parseDouble(exponentString[0]) * Math.pow(10, Double.parseDouble(exponentString[1]));
++    } else {
++      Results.Errors errors = new Results.Errors();
++      errors.invalidValue(context.identifier.getName(), sb.toString(), context.line.get());
++      return errors;
++    }
++  }
++
++  @Override
++  public boolean canWrite(Object value) {
++    return Number.class.isInstance(value);
++  }
++
++  @Override
++  public void write(Object value, WriterContext context) {
++    context.write(value.toString());
++  }
++
++  @Override
++  public boolean isPrimitiveType() {
++    return true;
++  }
++
++  @Override
++  public String toString() {
++    return "number";
++  }
++}
 --- net/minecraft/game/world/PortalGenerator.java
 +++ net/minecraft/game/world/PortalGenerator.java
 @@ -4,6 +4,7 @@
@@ -1382,6 +1535,47 @@
 +		addMapping(WindMillEntity.class, "WindMill", 128);
  	}
  }
+--- /dev/null
++++ com/moandjiezana/toml/ValueWriters.java
+@@ -1,0 +1,38 @@
++package com.moandjiezana.toml;
++
++import static com.moandjiezana.toml.BooleanValueReaderWriter.BOOLEAN_VALUE_READER_WRITER;
++import static com.moandjiezana.toml.DateValueReaderWriter.DATE_PARSER_JDK_6;
++import static com.moandjiezana.toml.DateValueReaderWriter.DATE_VALUE_READER_WRITER;
++import static com.moandjiezana.toml.MapValueWriter.MAP_VALUE_WRITER;
++import static com.moandjiezana.toml.NumberValueReaderWriter.NUMBER_VALUE_READER_WRITER;
++import static com.moandjiezana.toml.ObjectValueWriter.OBJECT_VALUE_WRITER;
++import static com.moandjiezana.toml.PrimitiveArrayValueWriter.PRIMITIVE_ARRAY_VALUE_WRITER;
++import static com.moandjiezana.toml.StringValueReaderWriter.STRING_VALUE_READER_WRITER;
++import static com.moandjiezana.toml.TableArrayValueWriter.TABLE_ARRAY_VALUE_WRITER;
++
++class ValueWriters {
++
++  static final ValueWriters WRITERS = new ValueWriters();
++
++  ValueWriter findWriterFor(Object value) {
++    for (ValueWriter valueWriter : VALUE_WRITERS) {
++      if (valueWriter.canWrite(value)) {
++        return valueWriter;
++      }
++    }
++
++    return OBJECT_VALUE_WRITER;
++  }
++
++  private ValueWriters() {}
++  
++  private static DateValueReaderWriter getPlatformSpecificDateConverter() {
++    String specificationVersion = Runtime.class.getPackage().getSpecificationVersion();
++    return specificationVersion != null && specificationVersion.startsWith("1.6") ? DATE_PARSER_JDK_6 : DATE_VALUE_READER_WRITER;
++  }
++
++  private static final ValueWriter[] VALUE_WRITERS = {
++      STRING_VALUE_READER_WRITER, NUMBER_VALUE_READER_WRITER, BOOLEAN_VALUE_READER_WRITER, getPlatformSpecificDateConverter(),
++      MAP_VALUE_WRITER, PRIMITIVE_ARRAY_VALUE_WRITER, TABLE_ARRAY_VALUE_WRITER
++  };
++}
 --- net/minecraft/game/item/AxeItem.java
 +++ net/minecraft/game/item/AxeItem.java
 @@ -3,7 +3,7 @@
@@ -1657,6 +1851,131 @@
  		if(var6.func_22161_d()) {
  			var11 = SelectWorldScreen.func_22088_h(this.parentWorldGui) + " " + var11;
  		}
+--- /dev/null
++++ com/moandjiezana/toml/Container.java
+@@ -1,0 +1,122 @@
++package com.moandjiezana.toml;
++
++import java.util.ArrayList;
++import java.util.HashMap;
++import java.util.List;
++import java.util.Map;
++
++abstract class Container {
++
++  abstract boolean accepts(String key);
++  abstract void put(String key, Object value);
++  abstract Object get(String key);
++  abstract boolean isImplicit();
++
++  static class Table extends Container {
++    private final Map<String, Object> values = new HashMap<String, Object>();
++    final String name;
++    final boolean implicit;
++
++    Table() {
++      this(null, false);
++    }
++    
++    public Table(String name) {
++      this(name, false);
++    }
++
++    public Table(String tableName, boolean implicit) {
++      this.name = tableName;
++      this.implicit = implicit;
++    }
++
++    @Override
++    boolean accepts(String key) {
++      return !values.containsKey(key) || values.get(key) instanceof Container.TableArray;
++    }
++
++    @Override
++    void put(String key, Object value) {
++      values.put(key, value);
++    }
++
++    @Override
++    Object get(String key) {
++      return values.get(key);
++    }
++    
++    boolean isImplicit() {
++      return implicit;
++    }
++
++    /**
++     * This modifies the Table's internal data structure, such that it is no longer usable.
++     *
++     * Therefore, this method must only be called when all data has been gathered.
++
++     * @return A Map-and-List-based of the TOML data
++     */
++    Map<String, Object> consume() {
++      for (Map.Entry<String, Object> entry : values.entrySet()) {
++        if (entry.getValue() instanceof Container.Table) {
++          entry.setValue(((Container.Table) entry.getValue()).consume());
++        } else if (entry.getValue() instanceof Container.TableArray) {
++          entry.setValue(((Container.TableArray) entry.getValue()).getValues());
++        }
++      }
++
++      return values;
++    }
++
++    @Override
++    public String toString() {
++      return values.toString();
++    }
++  }
++
++  static class TableArray extends Container {
++    private final List<Container.Table> values = new ArrayList<Container.Table>();
++
++    TableArray() {
++      values.add(new Container.Table());
++    }
++
++    @Override
++    boolean accepts(String key) {
++      return getCurrent().accepts(key);
++    }
++
++    @Override
++    void put(String key, Object value) {
++      values.add((Container.Table) value);
++    }
++
++    @Override
++    Object get(String key) {
++      throw new UnsupportedOperationException();
++    }
++    
++    boolean isImplicit() {
++      return false;
++    }
++
++    List<Map<String, Object>> getValues() {
++      ArrayList<Map<String, Object>> unwrappedValues = new ArrayList<Map<String,Object>>();
++      for (Container.Table table : values) {
++        unwrappedValues.add(table.consume());
++      }
++      return unwrappedValues;
++    }
++
++    Container.Table getCurrent() {
++      return values.get(values.size() - 1);
++    }
++
++    @Override
++    public String toString() {
++      return values.toString();
++    }
++  }
++
++  private Container() {}
++}
 --- net/minecraft/client/gui/IngameMenuScreen.java
 +++ net/minecraft/client/gui/IngameMenuScreen.java
 @@ -22,8 +22,8 @@
@@ -1789,6 +2108,78 @@
  			var2.getRGB(var3, var4, 16, 16, this.watchIconImageData, 0, 16);
  			var2 = ImageIO.read(Minecraft.class.getResource("/misc/dial.png"));
  			var2.getRGB(0, 0, 16, 16, this.dialImageData, 0, 16);
+--- /dev/null
++++ com/moandjiezana/toml/Keys.java
+@@ -1,0 +1,69 @@
++package com.moandjiezana.toml;
++
++import java.util.ArrayList;
++import java.util.List;
++
++class Keys {
++  
++  static class Key {
++    final String name;
++    final int index;
++    final String path;
++
++    Key(String name, int index, Key next) {
++      this.name = name;
++      this.index = index;
++      if (next != null) {
++        this.path = name + "." + next.path;
++      } else {
++        this.path = name;
++      }
++    }
++  }
++
++  static Keys.Key[] split(String key) {
++    List<Key> splitKey = new ArrayList<Key>();
++    StringBuilder current = new StringBuilder();
++    boolean quoted = false;
++    boolean indexable = true;
++    boolean inIndex = false;
++    int index = -1;
++    
++    for (int i = key.length() - 1; i > -1; i--) {
++      char c = key.charAt(i);
++      if (c == ']' && indexable) {
++        inIndex = true;
++        continue;
++      }
++      indexable = false;
++      if (c == '[' && inIndex) {
++        inIndex = false;
++        index = Integer.parseInt(current.toString());
++        current = new StringBuilder();
++        continue;
++      }
++      if (isQuote(c) && (i == 0 || key.charAt(i - 1) != '\\')) {
++        quoted = !quoted;
++        indexable = false;
++      }
++      if (c != '.' || quoted) {
++        current.insert(0, c);
++      } else {
++        splitKey.add(0, new Key(current.toString(), index, !splitKey.isEmpty() ? splitKey.get(0) : null));
++        indexable = true;
++        index = -1;
++        current = new StringBuilder();
++      }
++    }
++    
++    splitKey.add(0, new Key(current.toString(), index, !splitKey.isEmpty() ? splitKey.get(0) : null));
++    
++    return splitKey.toArray(new Key[0]);
++  }
++  
++  static boolean isQuote(char c) {
++    return c == '"' || c == '\'';
++  }
++
++  private Keys() {}
++}
 --- net/minecraft/client/gui/ConnectingScreen.java
 +++ net/minecraft/client/gui/ConnectingScreen.java
 @@ -45,7 +45,7 @@
@@ -1848,7 +2239,7 @@
  
 --- /dev/null
 +++ net/minecraft/game/world/weather/WeatherManager.java
-@@ -1,0 +1,134 @@
+@@ -1,0 +1,105 @@
 +package net.minecraft.game.world.weather;
 +
 +import net.minecraft.game.world.World;
@@ -1866,32 +2257,15 @@
 +    public float weatherIntensity;
 +    public float weatherPower;
 +
-+    public FastNoiseLite humidity = new FastNoiseLite();
-+
 +    public float windSpeed;
 +    public float windAngle;
 +    public int windSpeedTimer = 10;
-+
-+    public double humidityX = 0;
-+    public double humidityZ = 0;
-+    public double humidityProgression = 0;
 +
 +    public WeatherManager(World world) {
 +        this.world = world;
 +        Random rand = new Random();
 +        windAngle = rand.nextInt(360)-180;
 +        windSpeed = rand.nextInt(75);
-+
-+        humidity.SetNoiseType(FastNoiseLite.NoiseType.Perlin);
-+        humidity.SetSeed((int)((world.getRandomSeed() * 1024L) & 0xffffffffL));
-+        humidity.SetFrequency(1);
-+        /*humidity.SetFrequency(0.056F);
-+        humidity.SetRotationType3D(FastNoiseLite.RotationType3D.ImproveXYPlanes);*/
-+        humidity.SetFractalType(FastNoiseLite.FractalType.FBm);
-+        humidity.SetFractalOctaves(2);
-+        /*humidity.SetDomainWarpType(FastNoiseLite.DomainWarpType.OpenSimplex2);
-+        humidity.SetDomainWarpAmp(300);
-+        humidity.SetDomainWarpFreq(-0.002F);*/
 +    }
 +
 +    public void tick() {
@@ -1915,11 +2289,7 @@
 +            windSpeedTimer = 10;
 +        }
 +
-+        humidityX -= (float) (Math.cos(Math.toRadians(windAngle)) * MathHelper.lerp(windSpeed / 100.0, 0, 0.01F));
-+        humidityZ -= (float) (Math.sin(Math.toRadians(windAngle)) * MathHelper.lerp(windSpeed / 100.0, 0, 0.01F));
-+        humidityProgression += 1.0;
-+
-+        /*if (this.nextWeather == null && this.weatherIntensity <= 1.0F) {
++        if (this.nextWeather == null && this.weatherIntensity <= 1.0F) {
 +            this.weatherIntensity += 0.002F;
 +            if (this.weatherIntensity > 1.0F) {
 +                this.weatherIntensity = 1.0F;
@@ -1952,7 +2322,7 @@
 +                this.nextWeather = this.world.dimension.getDefaultWeather();
 +            }
 +            weatherDuration = (long)(this.world.rand.nextFloat() * 36000.0F + 6000.0F);
-+        }*/
++        }
 +    }
 +
 +    public boolean isRaining() {
@@ -1974,14 +2344,398 @@
 +    public float getFog() {
 +        return currentWeather == null ? 1.0F : MathHelper.lerp(weatherIntensity,1.0F,currentWeather.fog);
 +    }
++}
+--- /dev/null
++++ com/moandjiezana/toml/Toml.java
+@@ -1,0 +1,389 @@
++package com.moandjiezana.toml;
 +
-+    public double getHumidity(int x, int z) {
-+        //double v = 1.0 + humidity.GetNoise((((float)x)+(float)humidityX)/16F,(((float)z)+(float)humidityZ)/16F,(float)humidityProgression);
-+        double v = 1.0 + humidity.GetNoise(((float)world.getWorldTime()/20F)/150F,0);
-+        Biome biome = world.getBiomeSource().getBiomeGenAt((int)x,(int)z);
-+        double humidity = MathHelper.lerp(world.getBiomeSource().humidity[0],20.0,80.0);
-+        return ((humidity * 0.7 + 40 * 0.3) * v);
++import java.io.BufferedReader;
++import java.io.File;
++import java.io.FileInputStream;
++import java.io.FileNotFoundException;
++import java.io.FileReader;
++import java.io.IOException;
++import java.io.InputStream;
++import java.io.InputStreamReader;
++import java.io.Reader;
++import java.util.ArrayList;
++import java.util.Date;
++import java.util.HashMap;
++import java.util.LinkedHashSet;
++import java.util.List;
++import java.util.Map;
++import java.util.Set;
++
++/**
++ * <p>Provides access to the keys and tables in a TOML data source.</p>
++ *
++ * <p>All getters can fall back to default values if they have been provided as a constructor argument.
++ * Getters for simple values (String, Date, etc.) will return null if no matching key exists.
++ * {@link #getList(String)}, {@link #getTable(String)} and {@link #getTables(String)} return empty values if there is no matching key.</p>
++ * 
++ * <p>All read methods throw an {@link IllegalStateException} if the TOML is incorrect.</p>
++ *
++ * <p>Example usage:</p>
++ * <pre><code>
++ * Toml toml = new Toml().read(getTomlFile());
++ * String name = toml.getString("name");
++ * Long port = toml.getLong("server.ip"); // compound key. Is equivalent to:
++ * Long port2 = toml.getTable("server").getLong("ip");
++ * MyConfig config = toml.to(MyConfig.class);
++ * </code></pre>
++ *
++ */
++public class Toml {
++
++  private Map<String, Object> values = new HashMap<String, Object>();
++  private final Toml defaults;
++
++  /**
++   * Creates Toml instance with no defaults.
++   */
++  public Toml() {
++    this(null);
++  }
++
++  /**
++   * @param defaults fallback values used when the requested key or table is not present in the TOML source that has been read.
++   */
++  public Toml(Toml defaults) {
++    this(defaults, new HashMap<String, Object>());
++  }
++
++  /**
++   * Populates the current Toml instance with values from file.
++   *
++   * @param file The File to be read. Expected to be encoded as UTF-8.
++   * @return this instance
++   * @throws IllegalStateException If file contains invalid TOML
++   */
++  public Toml read(File file) {
++    try {
++      return read(new InputStreamReader(new FileInputStream(file), "UTF8"));
++    } catch (Exception e) {
++      throw new RuntimeException(e);
 +    }
++  }
++
++  /**
++   * Populates the current Toml instance with values from inputStream.
++   *
++   * @param inputStream Closed after it has been read.
++   * @return this instance
++   * @throws IllegalStateException If file contains invalid TOML
++   */
++  public Toml read(InputStream inputStream) {
++    return read(new InputStreamReader(inputStream));
++  }
++
++  /**
++   * Populates the current Toml instance with values from reader.
++   *
++   * @param reader Closed after it has been read.
++   * @return this instance
++   * @throws IllegalStateException If file contains invalid TOML
++   */
++  public Toml read(Reader reader) {
++    BufferedReader bufferedReader = null;
++    try {
++      bufferedReader = new BufferedReader(reader);
++
++      StringBuilder w = new StringBuilder();
++      String line = bufferedReader.readLine();
++      while (line != null) {
++        w.append(line).append('\n');
++        line = bufferedReader.readLine();
++      }
++      read(w.toString());
++    } catch (IOException e) {
++      throw new RuntimeException(e);
++    } finally {
++      try {
++        bufferedReader.close();
++      } catch (IOException e) {}
++    }
++    return this;
++  }
++
++  /**
++   * Populates the current Toml instance with values from otherToml.
++   *
++   * @param otherToml 
++   * @return this instance
++   */
++  public Toml read(Toml otherToml) {
++    this.values = otherToml.values;
++    
++    return this;
++  }
++
++  /**
++   * Populates the current Toml instance with values from tomlString.
++   *
++   * @param tomlString String to be read.
++   * @return this instance
++   * @throws IllegalStateException If tomlString is not valid TOML
++   */
++  public Toml read(String tomlString) throws IllegalStateException {
++    Results results = TomlParser.run(tomlString);
++    if (results.errors.hasErrors()) {
++      throw new IllegalStateException(results.errors.toString());
++    }
++
++    this.values = results.consume();
++
++    return this;
++  }
++
++  public String getString(String key) {
++    return (String) get(key);
++  }
++
++  public String getString(String key, String defaultValue) {
++    String val = getString(key);
++    return val == null ? defaultValue : val;
++  }
++
++  public Long getLong(String key) {
++    return (Long) get(key);
++  }
++
++  public Long getLong(String key, Long defaultValue) {
++    Long val = getLong(key);
++    return val == null ? defaultValue : val;
++  }
++
++  /**
++   * @param key a TOML key
++   * @param <T> type of list items
++   * @return <code>null</code> if the key is not found
++   */
++  public <T> List<T> getList(String key) {
++    @SuppressWarnings("unchecked")
++    List<T> list = (List<T>) get(key);
++    
++    return list;
++  }
++
++  /**
++   * @param key a TOML key
++   * @param defaultValue a list of default values
++   * @param <T> type of list items
++   * @return <code>null</code> is the key is not found
++   */
++  public <T> List<T> getList(String key, List<T> defaultValue) {
++    List<T> list = getList(key);
++    
++    return list != null ? list : defaultValue;
++  }
++
++  public Boolean getBoolean(String key) {
++    return (Boolean) get(key);
++  }
++
++  public Boolean getBoolean(String key, Boolean defaultValue) {
++    Boolean val = getBoolean(key);
++    return val == null ? defaultValue : val;
++  }
++
++  public Date getDate(String key) {
++    return (Date) get(key);
++  }
++
++  public Date getDate(String key, Date defaultValue) {
++    Date val = getDate(key);
++    return val == null ? defaultValue : val;
++  }
++
++  public Double getDouble(String key) {
++    return (Double) get(key);
++  }
++
++  public Double getDouble(String key, Double defaultValue) {
++    Double val = getDouble(key);
++    return val == null ? defaultValue : val;
++  }
++
++  /**
++   * @param key A table name, not including square brackets.
++   * @return A new Toml instance or <code>null</code> if no value is found for key.
++   */
++  @SuppressWarnings("unchecked")
++  public Toml getTable(String key) {
++    Map<String, Object> map = (Map<String, Object>) get(key);
++    
++    return map != null ? new Toml(null, map) : null;
++  }
++
++  /**
++   * @param key Name of array of tables, not including square brackets.
++   * @return A {@link List} of Toml instances or <code>null</code> if no value is found for key.
++   */
++  @SuppressWarnings("unchecked")
++  public List<Toml> getTables(String key) {
++    List<Map<String, Object>> tableArray = (List<Map<String, Object>>) get(key);
++
++    if (tableArray == null) {
++      return null;
++    }
++
++    ArrayList<Toml> tables = new ArrayList<Toml>();
++
++    for (Map<String, Object> table : tableArray) {
++      tables.add(new Toml(null, table));
++    }
++
++    return tables;
++  }
++
++  /**
++   * @param key a key name, can be compound (eg. a.b.c)
++   * @return true if key is present
++   */
++  public boolean contains(String key) {
++    return get(key) != null;
++  }
++
++  /**
++   * @param key a key name, can be compound (eg. a.b.c)
++   * @return true if key is present and is a primitive
++   */
++  public boolean containsPrimitive(String key) {
++    Object object = get(key);
++    
++    return object != null && !(object instanceof Map) && !(object instanceof List);
++  }
++
++  /**
++   * @param key a key name, can be compound (eg. a.b.c)
++   * @return true if key is present and is a table
++   */
++  public boolean containsTable(String key) {
++    Object object = get(key);
++    
++    return object != null && (object instanceof Map);
++  }
++
++  /**
++   * @param key a key name, can be compound (eg. a.b.c)
++   * @return true if key is present and is a table array
++   */
++  public boolean containsTableArray(String key) {
++    Object object = get(key);
++    
++    return object != null && (object instanceof List);
++  }
++
++  public boolean isEmpty() {
++    return values.isEmpty();
++  }
++
++  public Map<String, Object> toMap() {
++    HashMap<String, Object> valuesCopy = new HashMap<String, Object>(values);
++    
++    if (defaults != null) {
++      for (Map.Entry<String, Object> entry : defaults.values.entrySet()) {
++        if (!valuesCopy.containsKey(entry.getKey())) {
++          valuesCopy.put(entry.getKey(), entry.getValue());
++        }
++      }
++    }
++
++    return valuesCopy;
++  }
++  
++  /**
++   * @return a {@link Set} of Map.Entry instances. Modifications to the {@link Set} are not reflected in this Toml instance. Entries are immutable, so {@link Map.Entry#setValue(Object)} throws an UnsupportedOperationException.
++   */
++  public Set<Map.Entry<String,Object>> entrySet() {
++    Set<Map.Entry<String, Object>> entries = new LinkedHashSet<Map.Entry<String, Object>>();
++    
++    for (Map.Entry<String, Object> entry : values.entrySet()) {
++      Class<? extends Object> entryClass = entry.getValue().getClass();
++      
++      if (Map.class.isAssignableFrom(entryClass)) {
++        entries.add(new Toml.Entry(entry.getKey(), getTable(entry.getKey())));
++      } else if (List.class.isAssignableFrom(entryClass)) {
++        List<?> value = (List<?>) entry.getValue();
++        if (!value.isEmpty() && value.get(0) instanceof Map) {
++          entries.add(new Toml.Entry(entry.getKey(), getTables(entry.getKey())));
++        } else {
++          entries.add(new Toml.Entry(entry.getKey(), value));
++        }
++      } else {
++        entries.add(new Toml.Entry(entry.getKey(), entry.getValue()));
++      }
++    }
++    
++    return entries;
++  }
++
++  private class Entry implements Map.Entry<String, Object> {
++    
++    private final String key;
++    private final Object value;
++
++    @Override
++    public String getKey() {
++      return key;
++    }
++
++    @Override
++    public Object getValue() {
++      return value;
++    }
++
++    @Override
++    public Object setValue(Object value) {
++      throw new UnsupportedOperationException("TOML entry values cannot be changed.");
++    }
++    
++    private Entry(String key, Object value) {
++      this.key = key;
++      this.value = value;
++    }
++  }
++
++  @SuppressWarnings("unchecked")
++  private Object get(String key) {
++    if (values.containsKey(key)) {
++      return values.get(key);
++    }
++
++    Object current = new HashMap<String, Object>(values);
++    
++    Keys.Key[] keys = Keys.split(key);
++    
++    for (Keys.Key k : keys) {
++      if (k.index == -1 && current instanceof Map && ((Map<String, Object>) current).containsKey(k.path)) {
++        return ((Map<String, Object>) current).get(k.path);
++      }
++
++      current = ((Map<String, Object>) current).get(k.name);
++
++      if (k.index > -1 && current != null) {
++        if (k.index >= ((List<?>) current).size()) {
++          return null;
++        }
++        
++        current = ((List<?>) current).get(k.index);
++      }
++
++      if (current == null) {
++        return defaults != null ? defaults.get(key) : null;
++      }
++    }
++    
++    return current;
++  }
++  
++  private Toml(Toml defaults, Map<String, Object> values) {
++    this.values = values;
++    this.defaults = defaults;
++  }
 +}
 --- net/minecraft/game/world/block/tileentity/ChestTileEntity.java
 +++ net/minecraft/game/world/block/tileentity/ChestTileEntity.java
@@ -3615,6 +4369,15 @@
  	public float getShadowSize() {
 --- net/minecraft/client/gui/OptionsScreen.java
 +++ net/minecraft/client/gui/OptionsScreen.java
+@@ -9,7 +9,7 @@
+ 
+ public class OptionsScreen extends GuiScreen {
+ 	private GuiScreen parentScreen;
+-	protected String screenTitle = "Options";
++	protected String screenTitle = "";
+ 	private GameSettings options;
+ 	private static Option[] field_22135_k = new Option[]{Option.MUSIC, Option.SOUND, Option.INVERT_MOUSE, Option.SENSITIVITY, Option.DIFFICULTY};
+ 
 @@ -67,7 +67,7 @@
  	}
  
@@ -3624,6 +4387,30 @@
  		this.drawCenteredString(this.fontRenderer, this.screenTitle, this.width / 2, 20, 16777215);
  		super.drawScreen(var1, var2, var3);
  	}
+--- /dev/null
++++ com/moandjiezana/toml/ValueReader.java
+@@ -1,0 +1,21 @@
++package com.moandjiezana.toml;
++
++import java.util.concurrent.atomic.AtomicInteger;
++
++interface ValueReader {
++
++  /**
++   * @param s must already have been trimmed
++   */
++  boolean canRead(String s);
++  
++  /**
++   * Partial validation. Stops after type terminator, rather than at EOI.
++   * 
++   * @param s  must already have been validated by {@link #canRead(String)}
++   * @param index where to start in s
++   * @param line current line number, used for error reporting 
++   * @return a value or a {@link Results.Errors}
++   */
++  Object read(String s, AtomicInteger index, Context context);
++}
 --- net/minecraft/client/gui/component/GuiYesNo.java
 +++ net/minecraft/client/gui/component/GuiYesNo.java
 @@ -29,7 +29,7 @@
@@ -3635,6 +4422,86 @@
  		this.drawCenteredString(this.fontRenderer, this.message1, this.width / 2, 70, 16777215);
  		this.drawCenteredString(this.fontRenderer, this.message2, this.width / 2, 90, 16777215);
  		super.drawScreen(var1, var2, var3);
+--- /dev/null
++++ com/moandjiezana/toml/InlineTableValueReader.java
+@@ -1,0 +1,77 @@
++package com.moandjiezana.toml;
++
++import static com.moandjiezana.toml.ValueReaders.VALUE_READERS;
++
++import java.util.HashMap;
++import java.util.concurrent.atomic.AtomicInteger;
++
++class InlineTableValueReader implements ValueReader {
++
++  static final InlineTableValueReader INLINE_TABLE_VALUE_READER = new InlineTableValueReader();
++  
++  @Override
++  public boolean canRead(String s) {
++    return s.startsWith("{");
++  }
++
++  @Override
++  public Object read(String s, AtomicInteger sharedIndex, Context context) {
++    AtomicInteger line = context.line;
++    int startLine = line.get();
++    int startIndex = sharedIndex.get();
++    boolean inKey = true;
++    boolean inValue = false;
++    boolean terminated = false;
++    StringBuilder currentKey = new StringBuilder();
++    HashMap<String, Object> results = new HashMap<String, Object>();
++    Results.Errors errors = new Results.Errors();
++    
++    for (int i = sharedIndex.incrementAndGet(); sharedIndex.get() < s.length(); i = sharedIndex.incrementAndGet()) {
++      char c = s.charAt(i);
++      
++      if (inValue && !Character.isWhitespace(c)) {
++        Object converted = VALUE_READERS.convert(s, sharedIndex, context.with(Identifier.from(currentKey.toString(), context)));
++        
++        if (converted instanceof Results.Errors) {
++          errors.add((Results.Errors) converted);
++          return errors;
++        }
++        
++        String currentKeyTrimmed = currentKey.toString().trim();
++        Object previous = results.put(currentKeyTrimmed, converted);
++        
++        if (previous != null) {
++          errors.duplicateKey(currentKeyTrimmed, context.line.get());
++          return errors;
++        }
++        
++        currentKey = new StringBuilder();
++        inValue = false;
++      } else if (c == ',') {
++        inKey = true;
++        inValue = false;
++        currentKey = new StringBuilder();
++      } else if (c == '=') {
++        inKey = false;
++        inValue = true;
++      } else if (c == '}') {
++        terminated = true;
++        break;
++      } else if (inKey) {
++        currentKey.append(c);
++      }
++    }
++    
++    if (!terminated) {
++      errors.unterminated(context.identifier.getName(), s.substring(startIndex), startLine);
++    }
++    
++    if (errors.hasErrors()) {
++      return errors;
++    }
++    
++    return results;
++  }
++
++  private InlineTableValueReader() {}
++}
 --- /dev/null
 +++ net/minecraft/game/world/block/mechanical/MillstoneBlock.java
 @@ -1,0 +1,28 @@
@@ -4201,7 +5068,7 @@
  import net.minecraft.game.world.block.Block;
  import net.minecraft.game.world.block.LiquidBlock;
  import net.minecraft.game.world.block.tileentity.TileEntity;
-@@ -33,8 +33,11 @@
+@@ -33,8 +33,12 @@
  import net.minecraft.game.world.path.PathEntity;
  import net.minecraft.game.world.path.Pathfinder;
  import net.minecraft.game.world.save.SaveHandler;
@@ -4210,10 +5077,11 @@
  import net.minecraft.util.MathHelper;
  import net.minecraft.util.ProgressUpdate;
 +import net.minecraft.util.SharedConstants;
++import org.lwjgl.input.Keyboard;
  
  public class World implements BlockAccess {
  	public boolean scheduledUpdatesAreImmediate;
-@@ -51,10 +54,6 @@
+@@ -51,10 +55,6 @@
  	public int skylightSubtracted;
  	protected int distHashCounter;
  	protected final int distHashMagic;
@@ -4224,7 +5092,7 @@
  	protected int weatherUpdateTick;
  	public int lightningFlash;
  	public boolean editingBlocks;
-@@ -81,8 +80,9 @@
+@@ -81,8 +81,9 @@
  	private int soundCounter;
  	private List entitiesInAABB;
  	public boolean remoteWorld;
@@ -4235,7 +5103,7 @@
  		return this.dimension.biomeSource;
  	}
  
-@@ -123,8 +123,8 @@
+@@ -123,8 +124,8 @@
  		this.mapStorage = new MapStorage(var1);
  		var3.registerWorld(this);
  		this.chunkProvider = this.getNewChunkProvider();
@@ -4245,7 +5113,7 @@
  	}
  
  	public World(World var1, Dimension var2) {
-@@ -165,8 +165,8 @@
+@@ -165,8 +166,8 @@
  		this.dimension = var2;
  		var2.registerWorld(this);
  		this.chunkProvider = this.getNewChunkProvider();
@@ -4255,7 +5123,7 @@
  	}
  
  	public World(SaveHandler var1, String var2, long var3) {
-@@ -230,8 +230,8 @@
+@@ -230,8 +231,8 @@
  			this.getInitialSpawnLocation();
  		}
  
@@ -4265,7 +5133,7 @@
  	}
  
  	protected ChunkProvider getNewChunkProvider() {
-@@ -242,7 +242,7 @@
+@@ -242,7 +243,7 @@
  	protected void getInitialSpawnLocation() {
  		this.worldChunkLoadOverride = true;
  		int var1 = 0;
@@ -4274,7 +5142,7 @@
  
  		int var3;
  		for(var3 = 0; !this.dimension.canCoordinateBeSpawn(var1, var3); var3 += this.rand.nextInt(64) - this.rand.nextInt(64)) {
-@@ -255,7 +255,7 @@
+@@ -255,7 +256,7 @@
  
  	public void setSpawnLocation() {
  		if(this.worldInfo.getSpawnY() <= 0) {
@@ -4283,7 +5151,7 @@
  		}
  
  		int var1 = this.worldInfo.getSpawnX();
-@@ -336,7 +336,7 @@
+@@ -336,7 +337,7 @@
  	}
  
  	public int getBlockId(int var1, int var2, int var3) {
@@ -4292,7 +5160,7 @@
  	}
  
  	public boolean isAirBlock(int var1, int var2, int var3) {
-@@ -344,7 +344,7 @@
+@@ -344,7 +345,7 @@
  	}
  
  	public boolean blockExists(int var1, int var2, int var3) {
@@ -4301,7 +5169,7 @@
  	}
  
  	public boolean doChunksNearChunkExist(int var1, int var2, int var3, int var4) {
-@@ -352,7 +352,7 @@
+@@ -352,7 +353,7 @@
  	}
  
  	public boolean checkChunksExist(int var1, int var2, int var3, int var4, int var5, int var6) {
@@ -4310,7 +5178,7 @@
  			var1 >>= 4;
  			var2 >>= 4;
  			var3 >>= 4;
-@@ -390,7 +390,7 @@
+@@ -390,7 +391,7 @@
  		if(var1 >= -32000000 && var3 >= -32000000 && var1 < 32000000 && var3 <= 32000000) {
  			if(var2 < 0) {
  				return false;
@@ -4319,7 +5187,7 @@
  				return false;
  			} else {
  				Chunk var6 = this.getChunkFromChunkCoords(var1 >> 4, var3 >> 4);
-@@ -405,7 +405,7 @@
+@@ -405,7 +406,7 @@
  		if(var1 >= -32000000 && var3 >= -32000000 && var1 < 32000000 && var3 <= 32000000) {
  			if(var2 < 0) {
  				return false;
@@ -4328,7 +5196,7 @@
  				return false;
  			} else {
  				Chunk var5 = this.getChunkFromChunkCoords(var1 >> 4, var3 >> 4);
-@@ -425,7 +425,7 @@
+@@ -425,7 +426,7 @@
  		if(var1 >= -32000000 && var3 >= -32000000 && var1 < 32000000 && var3 <= 32000000) {
  			if(var2 < 0) {
  				return 0;
@@ -4337,7 +5205,7 @@
  				return 0;
  			} else {
  				Chunk var4 = this.getChunkFromChunkCoords(var1 >> 4, var3 >> 4);
-@@ -441,7 +441,7 @@
+@@ -441,7 +442,7 @@
  	public void setBlockMetadataWithNotify(int var1, int var2, int var3, int var4) {
  		if(this.setBlockMetadata(var1, var2, var3, var4)) {
  			int var5 = this.getBlockId(var1, var2, var3);
@@ -4346,7 +5214,7 @@
  				this.notifyBlockChange(var1, var2, var3, var5);
  			} else {
  				this.notifyBlocksOfNeighborChange(var1, var2, var3, var5);
-@@ -454,7 +454,7 @@
+@@ -454,7 +455,7 @@
  		if(var1 >= -32000000 && var3 >= -32000000 && var1 < 32000000 && var3 <= 32000000) {
  			if(var2 < 0) {
  				return false;
@@ -4355,7 +5223,7 @@
  				return false;
  			} else {
  				Chunk var5 = this.getChunkFromChunkCoords(var1 >> 4, var3 >> 4);
-@@ -549,8 +549,8 @@
+@@ -549,8 +550,8 @@
  		if(var2 < 0) {
  			return 0;
  		} else {
@@ -4366,7 +5234,7 @@
  			}
  
  			return this.getChunkFromChunkCoords(var1 >> 4, var3 >> 4).getBlockLightValue(var1 & 15, var2, var3 & 15, 0);
-@@ -594,8 +594,8 @@
+@@ -594,8 +595,8 @@
  			if(var2 < 0) {
  				return 0;
  			} else {
@@ -4377,7 +5245,7 @@
  				}
  
  				Chunk var11 = this.getChunkFromChunkCoords(var1 >> 4, var3 >> 4);
-@@ -612,7 +612,7 @@
+@@ -612,7 +613,7 @@
  		if(var1 >= -32000000 && var3 >= -32000000 && var1 < 32000000 && var3 <= 32000000) {
  			if(var2 < 0) {
  				return false;
@@ -4386,7 +5254,7 @@
  				return true;
  			} else if(!this.chunkExists(var1 >> 4, var3 >> 4)) {
  				return false;
-@@ -667,11 +667,11 @@
+@@ -667,11 +668,11 @@
  			var3 = 0;
  		}
  
@@ -4401,7 +5269,7 @@
  			int var5 = var2 >> 4;
  			int var6 = var4 >> 4;
  			if(!this.chunkExists(var5, var6)) {
-@@ -688,7 +688,7 @@
+@@ -688,7 +689,7 @@
  	public void setLightValue(LightType var1, int var2, int var3, int var4, int var5) {
  		if(var2 >= -32000000 && var4 >= -32000000 && var2 < 32000000 && var4 <= 32000000) {
  			if(var3 >= 0) {
@@ -4410,7 +5278,7 @@
  					if(this.chunkExists(var2 >> 4, var4 >> 4)) {
  						Chunk var6 = this.getChunkFromChunkCoords(var2 >> 4, var4 >> 4);
  						var6.setLightValue(var1, var2 & 15, var3, var4 & 15, var5);
-@@ -704,6 +704,9 @@
+@@ -704,6 +705,9 @@
  	}
  
  	public float getBrightness(int var1, int var2, int var3, int var4) {
@@ -4420,7 +5288,7 @@
  		int var5 = this.getBlockLightValue(var1, var2, var3);
  		if(var5 < var4) {
  			var5 = var4;
-@@ -713,6 +716,9 @@
+@@ -713,6 +717,9 @@
  	}
  
  	public float getLightBrightness(int var1, int var2, int var3) {
@@ -4430,7 +5298,7 @@
  		return this.dimension.lightBrightnessTable[this.getBlockLightValue(var1, var2, var3)];
  	}
  
-@@ -747,7 +753,7 @@
+@@ -747,7 +754,7 @@
  					}
  				}
  
@@ -4439,7 +5307,7 @@
  
  				while(var11-- >= 0) {
  					if(Double.isNaN(var1.xCoord) || Double.isNaN(var1.yCoord) || Double.isNaN(var1.zCoord)) {
-@@ -936,7 +942,7 @@
+@@ -936,7 +943,7 @@
  		}
  	}
  
@@ -4448,7 +5316,7 @@
  		for(int var2 = 0; var2 < this.worldAccesses.size(); ++var2) {
  			((WorldAccess)this.worldAccesses.get(var2)).obtainEntitySkin(var1);
  		}
-@@ -1044,8 +1050,8 @@
+@@ -1044,8 +1051,8 @@
  		}
  
  		var3 = 1.0F - var3;
@@ -4459,7 +5327,7 @@
  		var3 = 1.0F - var3;
  		return (int)(var3 * 11.0F);
  	}
-@@ -1071,7 +1077,7 @@
+@@ -1071,7 +1078,7 @@
  		var9 *= var4;
  		var10 *= var4;
  		var11 *= var4;
@@ -4468,7 +5336,7 @@
  		float var13;
  		float var14;
  		if(var12 > 0.0F) {
-@@ -1082,7 +1088,7 @@
+@@ -1082,7 +1089,7 @@
  			var11 = var11 * var14 + var13 * (1.0F - var14);
  		}
  
@@ -4477,7 +5345,7 @@
  		if(var13 > 0.0F) {
  			var14 = (var9 * 0.3F + var10 * 0.59F + var11 * 0.11F) * 0.2F;
  			float var15 = 1.0F - var13 * (12.0F / 16.0F);
-@@ -1124,7 +1130,7 @@
+@@ -1124,7 +1131,7 @@
  		float var4 = (float)(this.cloudColor >> 16 & 255L) / 255.0F;
  		float var5 = (float)(this.cloudColor >> 8 & 255L) / 255.0F;
  		float var6 = (float)(this.cloudColor & 255L) / 255.0F;
@@ -4486,7 +5354,7 @@
  		float var8;
  		float var9;
  		if(var7 > 0.0F) {
-@@ -1138,7 +1144,7 @@
+@@ -1138,7 +1145,7 @@
  		var4 *= var3 * 0.9F + 0.1F;
  		var5 *= var3 * 0.9F + 0.1F;
  		var6 *= var3 * 0.85F + 0.15F;
@@ -4495,7 +5363,7 @@
  		if(var8 > 0.0F) {
  			var9 = (var4 * 0.3F + var5 * 0.59F + var6 * 0.11F) * 0.2F;
  			float var10 = 1.0F - var8 * 0.95F;
-@@ -1157,7 +1163,7 @@
+@@ -1157,7 +1164,7 @@
  
  	public int getTopSolidOrLiquidBlock(int var1, int var2) {
  		Chunk var3 = this.getChunkFromBlockCoords(var1, var2);
@@ -4504,7 +5372,7 @@
  		var1 &= 15;
  
  		for(var2 &= 15; var4 > 0; --var4) {
-@@ -1173,7 +1179,7 @@
+@@ -1173,7 +1180,7 @@
  
  	public int findTopSolidBlock(int var1, int var2) {
  		Chunk var3 = this.getChunkFromBlockCoords(var1, var2);
@@ -4513,7 +5381,7 @@
  		var1 &= 15;
  
  		for(var2 &= 15; var4 > 0; --var4) {
-@@ -1202,7 +1208,7 @@
+@@ -1202,7 +1209,7 @@
  
  	public void scheduleUpdateTick(int var1, int var2, int var3, int var4, int var5) {
  		NextTickListEntry var6 = new NextTickListEntry(var1, var2, var3, var4);
@@ -4522,7 +5390,7 @@
  		if(this.scheduledUpdatesAreImmediate) {
  			if(this.checkChunksExist(var6.xCoord - var7, var6.yCoord - var7, var6.zCoord - var7, var6.xCoord + var7, var6.yCoord + var7, var6.zCoord + var7)) {
  				int var8 = this.getBlockId(var6.xCoord, var6.yCoord, var6.zCoord);
-@@ -1343,7 +1349,7 @@
+@@ -1343,7 +1350,7 @@
  		int var3 = MathHelper.floor(var1.posX);
  		int var4 = MathHelper.floor(var1.posZ);
  		byte var5 = 32;
@@ -4531,7 +5399,7 @@
  			var1.lastTickPosX = var1.posX;
  			var1.lastTickPosY = var1.posY;
  			var1.lastTickPosZ = var1.posZ;
-@@ -1771,40 +1777,46 @@
+@@ -1771,40 +1778,46 @@
  			++lightingUpdatesScheduled;
  
  			try {
@@ -4608,7 +5476,18 @@
  		}
  	}
  
-@@ -1848,100 +1860,29 @@
+@@ -1831,8 +1844,8 @@
+ 			}
+ 
+ 			if(!var1) {
+-				var2 = this.worldInfo.getWorldTime() + 24000L;
+-				this.worldInfo.setWorldTime(var2 - var2 % 24000L);
++				var2 = this.worldInfo.getWorldTime() + ((long)SharedConstants.DAY_LENGTH);
++				this.worldInfo.setWorldTime(var2 - var2 % ((long)SharedConstants.DAY_LENGTH));
+ 				this.wakeUpAllPlayers();
+ 			}
+ 		}
+@@ -1848,100 +1861,33 @@
  			}
  		}
  
@@ -4617,7 +5496,11 @@
 -			this.saveWorld(false, (ProgressUpdate)null);
 -		}
 +		if(!SharedConstants.PANORAMA_SCREENSHOT_MODE) {
-+			var2 = this.worldInfo.getWorldTime() + 1L;
++			if(Keyboard.isKeyDown(Keyboard.KEY_F7) && SharedConstants.DEBUG) {
++				var2 = this.worldInfo.getWorldTime() + 20L;
++			} else {
++				var2 = this.worldInfo.getWorldTime() + 1L;
++			}
 +			if (var2 % (long) this.autosavePeriod == 0L) {
 +				this.saveWorld(false, (ProgressUpdate) null);
 +			}
@@ -4718,7 +5601,7 @@
  	}
  
  	protected void updateBlocksAndPlayCaveSounds() {
-@@ -1983,7 +1924,7 @@
+@@ -1983,7 +1929,7 @@
  				var6 = this.distHashCounter >> 2;
  				var7 = var6 & 15;
  				var8 = var6 >> 8 & 15;
@@ -4727,7 +5610,7 @@
  				var10 = var14.getBlockID(var7, var9, var8);
  				var7 += var3;
  				var8 += var4;
-@@ -1996,7 +1937,7 @@
+@@ -1996,7 +1942,7 @@
  				}
  			}
  
@@ -4736,7 +5619,7 @@
  				this.distHashCounter = this.distHashCounter * 3 + 1013904223;
  				var6 = this.distHashCounter >> 2;
  				var7 = var3 + (var6 & 15);
-@@ -2015,10 +1956,10 @@
+@@ -2015,10 +1961,10 @@
  				var7 = var6 & 15;
  				var8 = var6 >> 8 & 15;
  				var9 = this.getTopSolidOrLiquidBlock(var7 + var3, var8 + var4);
@@ -4749,7 +5632,7 @@
  						this.setBlockWithNotify(var7 + var3, var9, var8 + var4, Block.snowLayer.blockID);
  					}
  
-@@ -2028,13 +1969,13 @@
+@@ -2028,13 +1974,13 @@
  				}
  			}
  
@@ -4766,7 +5649,7 @@
  				if(Block.tickOnLoad[var15]) {
  					Block.blocksList[var15].updateTick(this, var8 + var3, var10, var9 + var4, this.rand);
  				}
-@@ -2264,6 +2205,20 @@
+@@ -2264,6 +2210,20 @@
  		return var11;
  	}
  
@@ -4787,7 +5670,7 @@
  	public PlayerEntity getPlayerEntityByName(String var1) {
  		for(int var2 = 0; var2 < this.playerEntities.size(); ++var2) {
  			if(var1.equals(((PlayerEntity)this.playerEntities.get(var2)).username)) {
-@@ -2275,7 +2230,7 @@
+@@ -2275,7 +2235,7 @@
  	}
  
  	public byte[] getChunkData(int var1, int var2, int var3, int var4, int var5, int var6) {
@@ -4796,7 +5679,7 @@
  		int var8 = var1 >> 4;
  		int var9 = var3 >> 4;
  		int var10 = var1 + var4 - 1 >> 4;
-@@ -2287,8 +2242,8 @@
+@@ -2287,8 +2247,8 @@
  			var13 = 0;
  		}
  
@@ -4807,7 +5690,7 @@
  		}
  
  		for(int var15 = var8; var15 <= var10; ++var15) {
-@@ -2332,8 +2287,8 @@
+@@ -2332,8 +2292,8 @@
  			var13 = 0;
  		}
  
@@ -4818,7 +5701,7 @@
  		}
  
  		for(int var15 = var8; var15 <= var10; ++var15) {
-@@ -2519,7 +2474,7 @@
+@@ -2519,7 +2479,7 @@
  			}
  		}
  
@@ -4827,7 +5710,7 @@
  	}
  
  	public boolean isAllPlayersFullyAsleep() {
-@@ -2541,29 +2496,8 @@
+@@ -2541,29 +2501,8 @@
  		}
  	}
  
@@ -4858,7 +5741,7 @@
  			return false;
  		} else if(!this.canBlockSeeTheSky(var1, var2, var3)) {
  			return false;
-@@ -2596,5 +2530,9 @@
+@@ -2596,5 +2535,9 @@
  			((WorldAccess)this.worldAccesses.get(var7)).playAuxEffect(var1, var2, var3, var4, var5, var6);
  		}
  
@@ -4888,6 +5771,57 @@
  
  	void flushCache();
  
+--- /dev/null
++++ com/moandjiezana/toml/BooleanValueReaderWriter.java
+@@ -1,0 +1,48 @@
++package com.moandjiezana.toml;
++
++import java.util.concurrent.atomic.AtomicInteger;
++
++
++class BooleanValueReaderWriter implements ValueReader, ValueWriter {
++  
++  static final BooleanValueReaderWriter BOOLEAN_VALUE_READER_WRITER = new BooleanValueReaderWriter(); 
++
++  @Override
++  public boolean canRead(String s) {
++    return s.startsWith("true") || s.startsWith("false");
++  }
++
++  @Override
++  public Object read(String s, AtomicInteger index, Context context) {
++    s = s.substring(index.get());
++    Boolean b = s.startsWith("true") ? Boolean.TRUE : Boolean.FALSE;
++    
++    int endIndex = b == Boolean.TRUE ? 4 : 5;
++    
++    index.addAndGet(endIndex - 1);
++    
++    return b;
++  }
++
++  @Override
++  public boolean canWrite(Object value) {
++    return Boolean.class.isInstance(value);
++  }
++
++  @Override
++  public void write(Object value, WriterContext context) {
++    context.write(value.toString());
++  }
++
++  @Override
++  public boolean isPrimitiveType() {
++    return true;
++  }
++
++  private BooleanValueReaderWriter() {}
++
++  @Override
++  public String toString() {
++    return "boolean";
++  }
++}
 --- net/minecraft/game/world/block/BedBlock.java
 +++ net/minecraft/game/world/block/BedBlock.java
 @@ -10,11 +10,13 @@
@@ -5416,6 +6350,68 @@
  	}
  
  	public int getBlockTextureFromSide(int var1) {
+--- /dev/null
++++ com/moandjiezana/toml/Context.java
+@@ -1,0 +1,19 @@
++package com.moandjiezana.toml;
++
++import java.util.concurrent.atomic.AtomicInteger;
++
++class Context {
++  final Identifier identifier;
++  final AtomicInteger line;
++  final Results.Errors errors;
++  
++  public Context(Identifier identifier, AtomicInteger line, Results.Errors errors) {
++    this.identifier = identifier;
++    this.line = line;
++    this.errors = errors;
++  }
++
++  public Context with(Identifier identifier) {
++    return new Context(identifier, line, errors);
++  }
++}
+--- /dev/null
++++ com/moandjiezana/toml/ValueReaders.java
+@@ -1,0 +1,37 @@
++package com.moandjiezana.toml;
++
++import static com.moandjiezana.toml.ArrayValueReader.ARRAY_VALUE_READER;
++import static com.moandjiezana.toml.BooleanValueReaderWriter.BOOLEAN_VALUE_READER_WRITER;
++import static com.moandjiezana.toml.DateValueReaderWriter.DATE_VALUE_READER_WRITER;
++import static com.moandjiezana.toml.InlineTableValueReader.INLINE_TABLE_VALUE_READER;
++import static com.moandjiezana.toml.LiteralStringValueReader.LITERAL_STRING_VALUE_READER;
++import static com.moandjiezana.toml.MultilineLiteralStringValueReader.MULTILINE_LITERAL_STRING_VALUE_READER;
++import static com.moandjiezana.toml.MultilineStringValueReader.MULTILINE_STRING_VALUE_READER;
++import static com.moandjiezana.toml.NumberValueReaderWriter.NUMBER_VALUE_READER_WRITER;
++import static com.moandjiezana.toml.StringValueReaderWriter.STRING_VALUE_READER_WRITER;
++
++import java.util.concurrent.atomic.AtomicInteger;
++
++class ValueReaders {
++  
++  static final ValueReaders VALUE_READERS = new ValueReaders();
++  
++  Object convert(String value, AtomicInteger index, Context context) {
++    String substring = value.substring(index.get());
++    for (ValueReader valueParser : READERS) {
++      if (valueParser.canRead(substring)) {
++        return valueParser.read(value, index, context);
++      }
++    }
++    
++    Results.Errors errors = new Results.Errors();
++    errors.invalidValue(context.identifier.getName(), substring, context.line.get());
++    return errors;
++  }
++  
++  private ValueReaders() {}
++  
++  private static final ValueReader[] READERS = { 
++    MULTILINE_STRING_VALUE_READER, MULTILINE_LITERAL_STRING_VALUE_READER, LITERAL_STRING_VALUE_READER, STRING_VALUE_READER_WRITER, DATE_VALUE_READER_WRITER, NUMBER_VALUE_READER_WRITER, BOOLEAN_VALUE_READER_WRITER, ARRAY_VALUE_READER, INLINE_TABLE_VALUE_READER
++  };
++}
 --- net/minecraft/client/ImageBufferDownload.java
 +++ net/minecraft/client/ImageBufferDownload.java
 @@ -15,16 +15,32 @@
@@ -5705,6 +6701,41 @@
 +		}
  	}
  }
+--- /dev/null
++++ com/moandjiezana/toml/TableArrayValueWriter.java
+@@ -1,0 +1,32 @@
++package com.moandjiezana.toml;
++
++import static com.moandjiezana.toml.ValueWriters.WRITERS;
++
++import java.util.Collection;
++
++class TableArrayValueWriter extends ArrayValueWriter {
++  static final ValueWriter TABLE_ARRAY_VALUE_WRITER = new TableArrayValueWriter();
++
++  @Override
++  public boolean canWrite(Object value) {
++    return isArrayish(value) && !isArrayOfPrimitive(value);
++  }
++
++  @Override
++  public void write(Object from, WriterContext context) {
++    Collection<?> values = normalize(from);
++
++    WriterContext subContext = context.pushTableFromArray();
++
++    for (Object value : values) {
++      WRITERS.findWriterFor(value).write(value, subContext);
++    }
++  }
++
++  private TableArrayValueWriter() {}
++
++  @Override
++  public String toString() {
++    return "table-array";
++  }
++}
 --- net/minecraft/network/packet/Packet1Login.java
 +++ net/minecraft/network/packet/Packet1Login.java
 @@ -10,6 +10,7 @@
@@ -5996,7 +7027,7 @@
  	}
  
  	public ChunkProvider getChunkProvider() {
-@@ -44,7 +46,8 @@
+@@ -44,12 +46,13 @@
  
  	public boolean canCoordinateBeSpawn(int var1, int var2) {
  		int var3 = this.worldObj.getFirstUncoveredBlock(var1, var2);
@@ -6006,6 +7037,13 @@
  	}
  
  	public float calculateCelestialAngle(long var1, float var3) {
+-		int var4 = (int)(var1 % 24000L);
+-		float var5 = ((float)var4 + var3) / 24000.0F - 0.25F;
++		int var4 = (int)(var1 % ((long)SharedConstants.DAY_LENGTH));
++		float var5 = ((float)var4 + var3) / ((float)SharedConstants.DAY_LENGTH) - 0.25F;
+ 		if(var5 < 0.0F) {
+ 			++var5;
+ 		}
 @@ -110,10 +113,14 @@
  	}
  
@@ -6024,15 +7062,18 @@
  }
 --- net/minecraft/client/sound/SoundManager.java
 +++ net/minecraft/client/sound/SoundManager.java
-@@ -3,6 +3,7 @@
+@@ -1,8 +1,10 @@
+ package net.minecraft.client.sound;
+ 
  import java.io.File;
++import java.net.URL;
  import java.util.Random;
  import net.minecraft.client.GameSettings;
 +import net.minecraft.client.ThreadDownloadResources;
  import net.minecraft.game.entity.LivingEntity;
  import net.minecraft.util.MathHelper;
  import paulscode.sound.SoundSystem;
-@@ -12,10 +13,12 @@
+@@ -12,16 +14,21 @@
  import paulscode.sound.libraries.LibraryLWJGLOpenAL;
  
  public class SoundManager {
@@ -6046,7 +7087,16 @@
  	private int field_587_e = 0;
  	private GameSettings options;
  	private static boolean loaded = false;
-@@ -62,8 +65,10 @@
+ 	private Random rand = new Random();
+ 	private int ticksBeforeMusic = this.rand.nextInt(12000);
+ 
++	private URL nowPlayingURL = null;
++	private String nowPlayingName = null;
++
+ 	public void loadSoundSettings(GameSettings var1) {
+ 		this.soundPoolStreaming.field_1657_b = false;
+ 		this.options = var1;
+@@ -62,8 +69,10 @@
  		if(loaded) {
  			if(this.options.musicVolume == 0.0F) {
  				sndSystem.stop("BgMusic");
@@ -6057,7 +7107,7 @@
  			}
  		}
  
-@@ -88,15 +93,15 @@
+@@ -88,24 +97,56 @@
  		this.soundPoolMusic.addSound(var1, var2);
  	}
  
@@ -6077,16 +7127,30 @@
  				if(var1 != null) {
  					this.ticksBeforeMusic = this.rand.nextInt(12000) + 12000;
  					sndSystem.backgroundMusic("BgMusic", var1.soundUrl, var1.soundName, false);
-@@ -106,6 +111,26 @@
++					nowPlayingURL = var1.soundUrl;
++					nowPlayingName = var1.soundName;
+ 					sndSystem.setVolume("BgMusic", this.options.musicVolume);
+ 					sndSystem.play("BgMusic");
+ 				}
  			}
  
  		}
++	}
++
++	public void fadeRandomMusic() {
++		if(nowPlayingURL != null && nowPlayingName != null) {
++			sndSystem.fadeOut("BgMusic", null, 25000);
++			nowPlayingURL = null;
++			nowPlayingName = null;
++		}
 +	}
 +
 +	public boolean playMenuMusic() {
 +		if(loaded && ThreadDownloadResources.titleMusicReady && this.options.musicVolume != 0.0F) {
 +			if(sndSystem.playing("BgMusic")) {
 +				sndSystem.stop("BgMusic");
++				nowPlayingURL = null;
++				nowPlayingName = null;
 +			}
 +			if(!sndSystem.playing("TitleMusic")) {
 +				SoundPoolEntry var1 = this.soundPoolTitleMusic.getRandomSound();
@@ -6764,7 +7828,7 @@
  	}
  
  	public void renderSky(float var1) {
-@@ -704,7 +711,7 @@
+@@ -704,13 +711,13 @@
  			GL11.glEnable(GL11.GL_TEXTURE_2D);
  			GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE);
  			GL11.glPushMatrix();
@@ -6773,6 +7837,13 @@
  			var8 = 0.0F;
  			var9 = 0.0F;
  			var10 = 0.0F;
+ 			GL11.glColor4f(1.0F, 1.0F, 1.0F, var7);
+ 			GL11.glTranslatef(var8, var9, var10);
+-			GL11.glRotatef(0.0F, 0.0F, 0.0F, 1.0F);
++			GL11.glRotatef(-45.0F, 0.0F, 0.0F, 1.0F);
+ 			GL11.glRotatef(this.worldObj.getCelestialAngle(var1) * 360.0F, 1.0F, 0.0F, 0.0F);
+ 			var11 = 30.0F;
+ 			GL11.glBindTexture(GL11.GL_TEXTURE_2D, this.textureRegistry.getTexture("/terrain/sun.png"));
 @@ -755,7 +762,7 @@
  
  	public void renderClouds(float var1) {
@@ -7906,6 +8977,170 @@
  				return true;
  			}
  		}
+--- /dev/null
++++ com/moandjiezana/toml/TomlWriter.java
+@@ -1,0 +1,161 @@
++package com.moandjiezana.toml;
++
++import static com.moandjiezana.toml.MapValueWriter.MAP_VALUE_WRITER;
++import static com.moandjiezana.toml.ObjectValueWriter.OBJECT_VALUE_WRITER;
++import static com.moandjiezana.toml.ValueWriters.WRITERS;
++
++import java.io.File;
++import java.io.FileOutputStream;
++import java.io.FileWriter;
++import java.io.IOException;
++import java.io.OutputStream;
++import java.io.OutputStreamWriter;
++import java.io.StringWriter;
++import java.io.Writer;
++import java.util.List;
++import java.util.Map;
++import java.util.TimeZone;
++
++/**
++ * <p>Converts Objects to TOML</p>
++ *
++ * <p>An input Object can comprise arbitrarily nested combinations of Java primitive types,
++ * other {@link Object}s, {@link Map}s, {@link List}s, and Arrays. {@link Object}s and {@link Map}s
++ * are output to TOML tables, and {@link List}s and Array to TOML arrays.</p>
++ *
++ * <p>Example usage:</p>
++ * <pre><code>
++ * class AClass {
++ *   int anInt = 1;
++ *   int[] anArray = { 2, 3 };
++ * }
++ *
++ * String tomlString = new TomlWriter().write(new AClass());
++ * </code></pre>
++ */
++public class TomlWriter {
++  
++  public static class Builder {
++    private int keyIndentation;
++    private int tableIndentation;
++    private int arrayDelimiterPadding = 0;
++    private TimeZone timeZone = TimeZone.getTimeZone("UTC");
++    private boolean showFractionalSeconds = false;
++    
++    public TomlWriter.Builder indentValuesBy(int spaces) {
++      this.keyIndentation = spaces;
++      
++      return this;
++    }
++
++    public TomlWriter.Builder indentTablesBy(int spaces) {
++      this.tableIndentation = spaces;
++      
++      return this;
++    }
++    
++    public TomlWriter.Builder timeZone(TimeZone timeZone) {
++      this.timeZone = timeZone;
++      
++      return this;
++    }
++    
++    /**
++     * @param spaces number of spaces to put between opening square bracket and first item and between closing square bracket and last item
++     * @return this TomlWriter.Builder instance
++     */
++    public TomlWriter.Builder padArrayDelimitersBy(int spaces) {
++      this.arrayDelimiterPadding = spaces;
++      
++      return this;
++    }
++    
++    public TomlWriter build() {
++      return new TomlWriter(keyIndentation, tableIndentation, arrayDelimiterPadding, timeZone, showFractionalSeconds);
++    }
++
++    public TomlWriter.Builder showFractionalSeconds() {
++      this.showFractionalSeconds = true;
++      return this;
++    }
++  }
++
++  private final IndentationPolicy indentationPolicy;
++  private final DatePolicy datePolicy;
++
++  /**
++   * Creates a TomlWriter instance.
++   */
++  public TomlWriter() {
++    this(0, 0, 0, TimeZone.getTimeZone("UTC"), false);
++  }
++  
++  private TomlWriter(int keyIndentation, int tableIndentation, int arrayDelimiterPadding, TimeZone timeZone, boolean showFractionalSeconds) {
++    this.indentationPolicy = new IndentationPolicy(keyIndentation, tableIndentation, arrayDelimiterPadding);
++    this.datePolicy = new DatePolicy(timeZone, showFractionalSeconds);
++  }
++
++  /**
++   * Write an Object into TOML String.
++   *
++   * @param from the object to be written
++   * @return a string containing the TOML representation of the given Object
++   */
++  public String write(Object from) {
++    try {
++      StringWriter output = new StringWriter();
++      write(from, output);
++      
++      return output.toString();
++    } catch (IOException e) {
++      throw new RuntimeException(e);
++    }
++  }
++
++  /**
++   * Write an Object in TOML to a {@link File}. Output is encoded as UTF-8.
++   *
++   * @param from the object to be written
++   * @param target the File to which the TOML will be written
++   * @throws IOException if any file operations fail
++   */
++  public void write(Object from, File target) throws IOException {
++    OutputStream outputStream = new FileOutputStream(target);
++    try {
++      write(from, outputStream);
++    } finally {
++      outputStream.close();
++    }
++  }
++
++  /**
++   * Write an Object in TOML to a {@link OutputStream}. Output is encoded as UTF-8.
++   *
++   * @param from the object to be written
++   * @param target the OutputStream to which the TOML will be written. The stream is NOT closed after being written to.
++   * @throws IOException if target.write() fails
++   */
++  public void write(Object from, OutputStream target) throws IOException {
++    OutputStreamWriter writer = new OutputStreamWriter(target, "UTF-8");
++    write(from, writer);
++    writer.flush();
++  }
++
++  /**
++   * Write an Object in TOML to a {@link Writer}. You MUST ensure that the {@link Writer}s's encoding is set to UTF-8 for the TOML to be valid.
++   *
++   * @param from the object to be written. Can be a Map or a custom type. Must not be null.
++   * @param target the Writer to which TOML will be written. The Writer is not closed.
++   * @throws IOException if target.write() fails
++   * @throws IllegalArgumentException if from is of an invalid type
++   */
++  public void write(Object from, Writer target) throws IOException {
++    ValueWriter valueWriter = WRITERS.findWriterFor(from);
++    if (valueWriter == MAP_VALUE_WRITER || valueWriter == OBJECT_VALUE_WRITER) {
++      WriterContext context = new WriterContext(indentationPolicy, datePolicy, target);
++      valueWriter.write(from, context);
++    } else {
++      throw new IllegalArgumentException("An object of class " + from.getClass().getSimpleName() + " cannot produce valid TOML. Please pass in a Map or a custom type.");
++    }
++  }
++}
 --- net/minecraft/game/item/PickaxeItem.java
 +++ net/minecraft/game/item/PickaxeItem.java
 @@ -4,7 +4,7 @@
@@ -8834,6 +10069,71 @@
 +    public NBTBaseTag copy() {
 +        return new ShortArrayTag(Arrays.copyOf(this.shortArray, this.shortArray.length)).setKey(this.getKey());
 +    }
++}
+--- /dev/null
++++ com/moandjiezana/toml/IdentifierConverter.java
+@@ -1,0 +1,62 @@
++package com.moandjiezana.toml;
++
++import java.util.concurrent.atomic.AtomicInteger;
++
++class IdentifierConverter {
++  
++  static final IdentifierConverter IDENTIFIER_CONVERTER = new IdentifierConverter();
++
++  Identifier convert(String s, AtomicInteger index, Context context) {
++    boolean quoted = false;
++    StringBuilder name = new StringBuilder();
++    boolean terminated = false;
++    boolean isKey = s.charAt(index.get()) != '[';
++    boolean isTableArray = !isKey && s.length() > index.get() + 1 && s.charAt(index.get() + 1) == '[';
++    boolean inComment = false;
++    
++    for (int i = index.get(); i < s.length(); i = index.incrementAndGet()) {
++      char c = s.charAt(i);
++      if (Keys.isQuote(c) && (i == 0 || s.charAt(i - 1) != '\\')) {
++        quoted = !quoted;
++        name.append(c);
++      } else if (c == '\n') {
++        index.decrementAndGet();
++        break;
++      } else if (quoted) {
++        name.append(c);
++      } else if (c == '=' && isKey) {
++        terminated = true;
++        break;
++      } else if (c == ']' && !isKey) {
++        if (!isTableArray || s.length() > index.get() + 1 && s.charAt(index.get() + 1) == ']') {
++          terminated = true;
++          name.append(']');
++          if (isTableArray) {
++            name.append(']');
++          }
++        }
++      } else if (terminated && c == '#') {
++        inComment = true;
++      } else if (terminated && !Character.isWhitespace(c) && !inComment) {
++        terminated = false;
++        break;
++      } else if (!terminated) {
++        name.append(c);
++      }
++    }
++    
++    if (!terminated) {
++      if (isKey) {
++        context.errors.unterminatedKey(name.toString(), context.line.get());
++      } else {
++        context.errors.invalidKey(name.toString(), context.line.get());
++      }
++      
++      return Identifier.INVALID;
++    }
++    
++    return Identifier.from(name.toString(), context);
++  }
++  
++  private IdentifierConverter() {}
 +}
 --- /dev/null
 +++ net/minecraft/util/FastNoiseLite.java
@@ -11724,6 +13024,63 @@
 +        events[id] = this;
 +    }
 +}
+--- /dev/null
++++ com/moandjiezana/toml/PrimitiveArrayValueWriter.java
+@@ -1,0 +1,54 @@
++package com.moandjiezana.toml;
++
++import static com.moandjiezana.toml.ValueWriters.WRITERS;
++
++import java.util.Collection;
++
++class PrimitiveArrayValueWriter extends ArrayValueWriter {
++  static final ValueWriter PRIMITIVE_ARRAY_VALUE_WRITER = new PrimitiveArrayValueWriter();
++
++  @Override
++  public boolean canWrite(Object value) {
++    return isArrayish(value) && isArrayOfPrimitive(value);
++  }
++
++  @Override
++  public void write(Object o, WriterContext context) {
++    Collection<?> values = normalize(o);
++
++    context.write('[');
++    context.writeArrayDelimiterPadding();
++
++    boolean first = true;
++    ValueWriter firstWriter = null;
++
++    for (Object value : values) {
++      if (first) {
++        firstWriter = WRITERS.findWriterFor(value);
++        first = false;
++      } else {
++        ValueWriter writer = WRITERS.findWriterFor(value);
++        if (writer != firstWriter) {
++          throw new IllegalStateException(
++              context.getContextPath() +
++                  ": cannot write a heterogeneous array; first element was of type " + firstWriter +
++                  " but found " + writer
++          );
++        }
++        context.write(", ");
++      }
++
++      WRITERS.findWriterFor(value).write(value, context);
++    }
++
++    context.writeArrayDelimiterPadding();
++    context.write(']');
++  }
++
++  private PrimitiveArrayValueWriter() {}
++
++  @Override
++  public String toString() {
++    return "primitive-array";
++  }
++}
 --- net/minecraft/game/world/biome/RainforestBiome.java
 +++ /dev/null
 @@ -1,12 +1,0 @@
@@ -12251,6 +13608,39 @@
  	}
  }
 --- /dev/null
++++ com/moandjiezana/toml/IndentationPolicy.java
+@@ -1,0 +1,30 @@
++package com.moandjiezana.toml;
++
++/**
++ * Controls how a {@link TomlWriter} indents tables and key/value pairs.
++ *
++ * The default policy is to not indent.
++ */
++class IndentationPolicy {
++  private final int tableIndent;
++  private final int keyValueIndent;
++  private final int arrayDelimiterPadding;
++
++  IndentationPolicy(int keyIndentation, int tableIndentation, int arrayDelimiterPadding) {
++    this.keyValueIndent = keyIndentation;
++    this.tableIndent = tableIndentation;
++    this.arrayDelimiterPadding = arrayDelimiterPadding;
++  }
++
++  int getTableIndent() {
++    return tableIndent;
++  }
++
++  int getKeyValueIndent() {
++    return keyValueIndent;
++  }
++
++  int getArrayDelimiterPadding() {
++    return arrayDelimiterPadding;
++  }
++}
+--- /dev/null
 +++ net/minecraft/game/entity/mechanical/WindMillEntity.java
 @@ -1,0 +1,132 @@
 +package net.minecraft.game.entity.mechanical;
@@ -12511,6 +13901,89 @@
 +    public int getPacketSize() {
 +        return this.name.length();
 +    }
++}
+--- /dev/null
++++ com/moandjiezana/toml/ArrayValueReader.java
+@@ -1,0 +1,80 @@
++package com.moandjiezana.toml;
++
++import static com.moandjiezana.toml.ValueReaders.VALUE_READERS;
++
++import java.util.ArrayList;
++import java.util.List;
++import java.util.concurrent.atomic.AtomicInteger;
++
++class ArrayValueReader implements ValueReader {
++
++  static final ArrayValueReader ARRAY_VALUE_READER = new ArrayValueReader();
++
++  @Override
++  public boolean canRead(String s) {
++    return s.startsWith("[");
++  }
++
++  @Override
++  public Object read(String s, AtomicInteger index, Context context) {
++    AtomicInteger line = context.line;
++    int startLine = line.get();
++    int startIndex = index.get();
++    List<Object> arrayItems = new ArrayList<Object>();
++    boolean terminated = false;
++    boolean inComment = false;
++    Results.Errors errors = new Results.Errors();
++    
++    for (int i = index.incrementAndGet(); i < s.length(); i = index.incrementAndGet()) {
++
++      char c = s.charAt(i);
++      
++      if (c == '#' && !inComment) {
++        inComment = true;
++      } else if (c == '\n') {
++        inComment = false;
++        line.incrementAndGet();
++      } else if (inComment || Character.isWhitespace(c) || c == ',') {
++        continue;
++      } else if (c == '[') {
++        Object converted = read(s, index, context);
++        if (converted instanceof Results.Errors) {
++          errors.add((Results.Errors) converted);
++        } else if (!isHomogenousArray(converted, arrayItems)) {
++          errors.heterogenous(context.identifier.getName(), line.get());
++        } else {
++          arrayItems.add(converted);
++        }
++        continue;
++      } else if (c == ']') {
++        terminated = true;
++        break;
++      } else {
++        Object converted = VALUE_READERS.convert(s, index, context);
++        if (converted instanceof Results.Errors) {
++          errors.add((Results.Errors) converted);
++        } else if (!isHomogenousArray(converted, arrayItems)) {
++          errors.heterogenous(context.identifier.getName(), line.get());
++        } else {
++          arrayItems.add(converted);
++        }
++      }
++    }
++    
++    if (!terminated) {
++      errors.unterminated(context.identifier.getName(), s.substring(startIndex, s.length()), startLine);
++    }
++    
++    if (errors.hasErrors()) {
++      return errors;
++    }
++    
++    return arrayItems;
++  }
++
++  private boolean isHomogenousArray(Object o, List<?> values) {
++    return values.isEmpty() || values.get(0).getClass().isAssignableFrom(o.getClass()) || o.getClass().isAssignableFrom(values.get(0).getClass());
++  }
++  
++  private ArrayValueReader() {}
 +}
 --- net/minecraft/client/render/texture/TextureCompassFX.java
 +++ net/minecraft/client/render/texture/TextureCompassFX.java
@@ -12918,6 +14391,82 @@
  		this.field_22111_h.drawTextBox();
  		super.drawScreen(var1, var2, var3);
  	}
+--- /dev/null
++++ com/moandjiezana/toml/ObjectValueWriter.java
+@@ -1,0 +1,73 @@
++package com.moandjiezana.toml;
++
++import static com.moandjiezana.toml.MapValueWriter.MAP_VALUE_WRITER;
++
++import java.lang.reflect.Field;
++import java.lang.reflect.Modifier;
++import java.util.Arrays;
++import java.util.Iterator;
++import java.util.LinkedHashMap;
++import java.util.LinkedHashSet;
++import java.util.Map;
++import java.util.Set;
++
++class ObjectValueWriter implements ValueWriter {
++  static final ValueWriter OBJECT_VALUE_WRITER = new ObjectValueWriter();
++
++  @Override
++  public boolean canWrite(Object value) {
++    return true;
++  }
++
++  @Override
++  public void write(Object value, WriterContext context) {
++    Map<String, Object> to = new LinkedHashMap<String, Object>();
++    Set<Field> fields = getFields(value.getClass());
++    for (Field field : fields) {
++      to.put(field.getName(), getFieldValue(field, value));
++    }
++
++    MAP_VALUE_WRITER.write(to, context);
++  }
++
++  @Override
++  public boolean isPrimitiveType() {
++    return false;
++  }
++
++  private static Set<Field> getFields(Class<?> cls) {
++    Set<Field> fields = new LinkedHashSet<Field>(Arrays.asList(cls.getDeclaredFields()));
++    while (cls != Object.class) {
++      fields.addAll(Arrays.asList(cls.getDeclaredFields()));
++      cls = cls.getSuperclass();
++    }
++    removeConstantsAndSyntheticFields(fields);
++
++    return fields;
++  }
++
++  private static void removeConstantsAndSyntheticFields(Set<Field> fields) {
++    Iterator<Field> iterator = fields.iterator();
++    while (iterator.hasNext()) {
++      Field field = iterator.next();
++      if ((Modifier.isFinal(field.getModifiers()) && Modifier.isStatic(field.getModifiers())) || field.isSynthetic() || Modifier.isTransient(field.getModifiers())) {
++        iterator.remove();
++      }
++    }
++  }
++
++  private static Object getFieldValue(Field field, Object o) {
++    boolean isAccessible = field.isAccessible();
++    field.setAccessible(true);
++    Object value = null;
++    try {
++      value = field.get(o);
++    } catch (IllegalAccessException ignored) {
++    }
++    field.setAccessible(isAccessible);
++
++    return value;
++  }
++
++  private ObjectValueWriter() {}
++}
 --- net/minecraft/game/entity/monster/GhastEntity.java
 +++ net/minecraft/game/entity/monster/GhastEntity.java
 @@ -24,6 +24,7 @@
@@ -13016,7 +14565,7 @@
  				for(int var7 = 0; var7 < var5.getLength(); ++var7) {
  					Node var8 = var5.item(var7);
  					if(var8.getNodeType() == 1) {
-@@ -50,8 +57,38 @@
+@@ -50,8 +57,40 @@
  							}
  						}
  					}
@@ -13032,6 +14581,8 @@
 +			this.downloadAndInstallResourceTalon(new URL(MC_RESOURCE_URL + "46/4664de25eb2bfc88ebbd638cfae6934dd968ceaa"), "talon_creative/ariamath.ogg", 3668042, 2);
 +			this.downloadAndInstallResourceTalon(new URL(MC_RESOURCE_URL + "45/45cb6cbbff2d7fc1daefbd85b031fd9dcfc70e7b"), "talon_creative/dreiton.ogg", 5532231, 2);
 +			this.downloadAndInstallResourceTalon(new URL(MC_RESOURCE_URL + "62/6254527d626a2c7d80901cc2e62dce3ba4bd81f6"), "talon_creative/taswell.ogg", 5468843, 2);
++
++			downloadAndInstallResourceTalon(new URL(MC_RESOURCE_URL + "18/186d5d9481d59cc99bc4be1b5fbb98d0ef877b8e"),"sound/random/chestopen.ogg",8703,0);
 +
 +			downloadAndInstallResourceTalon(new URL("https://raw.githubusercontent.com/TalonFloof/OrderOfTheTalon/main/assets/sound/ambient/weather/rain1.ogg"),"sound/ambient/weather/quiet_rain1.ogg",291497,0);
 +			downloadAndInstallResourceTalon(new URL("https://raw.githubusercontent.com/TalonFloof/OrderOfTheTalon/main/assets/sound/ambient/weather/rain2.ogg"),"sound/ambient/weather/quiet_rain2.ogg",290830,0);
@@ -13055,7 +14606,7 @@
  		} catch (Exception var13) {
  			this.loadResource(this.resourcesFolder, "");
  			var13.printStackTrace();
-@@ -85,7 +122,7 @@
+@@ -85,7 +124,7 @@
  			int var6 = var2.indexOf("/");
  			String var7 = var2.substring(0, var6);
  			if(!var7.equals("sound") && !var7.equals("newsound")) {
@@ -13064,7 +14615,7 @@
  					return;
  				}
  			} else if(var5 != 0) {
-@@ -97,6 +134,34 @@
+@@ -97,6 +136,34 @@
  				var8.getParentFile().mkdirs();
  				String var9 = var2.replaceAll(" ", "%20");
  				this.downloadResource(new URL(var1, var9), var8, var3);
@@ -13131,6 +14682,65 @@
  	}
  
  	public CompoundTag getCompoundTag(String var1) {
+--- /dev/null
++++ com/moandjiezana/toml/MultilineStringValueReader.java
+@@ -1,0 +1,56 @@
++package com.moandjiezana.toml;
++
++import java.util.concurrent.atomic.AtomicInteger;
++
++class MultilineStringValueReader implements ValueReader {
++
++  static final MultilineStringValueReader MULTILINE_STRING_VALUE_READER = new MultilineStringValueReader();
++
++  @Override
++  public boolean canRead(String s) {
++    return s.startsWith("\"\"\"");
++  }
++
++  @Override
++  public Object read(String s, AtomicInteger index, Context context) {
++    AtomicInteger line = context.line;
++    int startLine = line.get();
++    int originalStartIndex = index.get();
++    int startIndex = index.addAndGet(3);
++    int endIndex = -1;
++    
++    if (s.charAt(startIndex) == '\n') {
++      startIndex = index.incrementAndGet();
++      line.incrementAndGet();
++    }
++    
++    for (int i = startIndex; i < s.length(); i = index.incrementAndGet()) {
++      char c = s.charAt(i);
++      
++      if (c == '\n') {
++        line.incrementAndGet();
++      } else if (c == '"' && s.length() > i + 2 && s.charAt(i + 1) == '"' && s.charAt(i + 2) == '"') {
++        endIndex = i;
++        index.addAndGet(2);
++        break;
++      }
++    }
++    
++    if (endIndex == -1) {
++      Results.Errors errors = new Results.Errors();
++      errors.unterminated(context.identifier.getName(), s.substring(originalStartIndex), startLine);
++      return errors;
++    }
++
++    s = s.substring(startIndex, endIndex);
++    s = s.replaceAll("\\\\\\s+", "");
++    s = StringValueReaderWriter.STRING_VALUE_READER_WRITER.replaceUnicodeCharacters(s);
++    s = StringValueReaderWriter.STRING_VALUE_READER_WRITER.replaceSpecialCharacters(s);
++
++    return s;
++  }
++
++  private MultilineStringValueReader() {
++  }
++
++}
 --- net/minecraft/game/world/block/tileentity/TileEntity.java
 +++ net/minecraft/game/world/block/tileentity/TileEntity.java
 @@ -5,6 +5,8 @@
@@ -13151,6 +14761,142 @@
 +		addMapping(MillstoneTileEntity.class, "Millstone");
  	}
  }
+--- /dev/null
++++ com/moandjiezana/toml/ArrayValueWriter.java
+@@ -1,0 +1,65 @@
++package com.moandjiezana.toml;
++
++
++import java.lang.reflect.Array;
++import java.util.ArrayList;
++import java.util.Collection;
++
++import static com.moandjiezana.toml.ValueWriters.WRITERS;
++
++abstract class ArrayValueWriter implements ValueWriter {
++  static protected boolean isArrayish(Object value) {
++    return value instanceof Collection || value.getClass().isArray();
++  }
++
++  @Override
++  public boolean isPrimitiveType() {
++    return false;
++  }
++
++  static boolean isArrayOfPrimitive(Object array) {
++    Object first = peek(array);
++    if (first != null) {
++      ValueWriter valueWriter = WRITERS.findWriterFor(first);
++      return valueWriter.isPrimitiveType() || isArrayish(first);
++    }
++
++    return true;
++  }
++
++  @SuppressWarnings("unchecked")
++  protected Collection<?> normalize(Object value) {
++    Collection<Object> collection;
++
++    if (value.getClass().isArray()) {
++      // Arrays.asList() interprets an array as a single element,
++      // so convert it to a list by hand
++      collection = new ArrayList<Object>(Array.getLength(value));
++      for (int i = 0; i < Array.getLength(value); i++) {
++        Object elem = Array.get(value, i);
++        collection.add(elem);
++      }
++    } else {
++      collection = (Collection<Object>) value;
++    }
++
++    return collection;
++  }
++
++  private static Object peek(Object value) {
++    if (value.getClass().isArray()) {
++      if (Array.getLength(value) > 0) {
++        return Array.get(value, 0);
++      } else {
++        return null;
++      }
++    } else {
++      Collection<?> collection = (Collection<?>) value;
++      if (collection.size() > 0) {
++        return collection.iterator().next();
++      }
++    }
++
++    return null;
++  }
++}
+--- /dev/null
++++ com/moandjiezana/toml/TomlParser.java
+@@ -1,0 +1,65 @@
++package com.moandjiezana.toml;
++
++import static com.moandjiezana.toml.IdentifierConverter.IDENTIFIER_CONVERTER;
++
++import java.util.concurrent.atomic.AtomicInteger;
++
++class TomlParser {
++
++  static Results run(String tomlString) {
++    final Results results = new Results();
++    
++    if (tomlString.isEmpty()) {
++      return results;
++    }
++    
++    AtomicInteger index = new AtomicInteger();
++    boolean inComment = false;
++    AtomicInteger line = new AtomicInteger(1);
++    Identifier identifier = null;
++    Object value = null;
++    
++    for (int i = index.get(); i < tomlString.length(); i = index.incrementAndGet()) {
++      char c = tomlString.charAt(i);
++      
++      if (results.errors.hasErrors()) {
++        break;
++      }
++
++      if (c == '#' && !inComment) {
++        inComment = true;
++      } else if (!Character.isWhitespace(c) && !inComment && identifier == null) {
++        Identifier id = IDENTIFIER_CONVERTER.convert(tomlString, index, new Context(null, line, results.errors));
++        
++        if (id != Identifier.INVALID) {
++          if (id.isKey()) {
++            identifier = id;
++          } else if (id.isTable()) {
++            results.startTables(id, line);
++          } else if (id.isTableArray()) {
++            results.startTableArray(id, line);
++          }
++        }
++      } else if (c == '\n') {
++        inComment = false;
++        identifier = null;
++        value = null;
++        line.incrementAndGet();
++      } else if (!inComment && identifier != null && identifier.isKey() && value == null && !Character.isWhitespace(c)) {
++        value = ValueReaders.VALUE_READERS.convert(tomlString, index, new Context(identifier, line, results.errors));
++        
++        if (value instanceof Results.Errors) {
++          results.errors.add((Results.Errors) value);
++        } else {
++          results.addValue(identifier.getName(), value, line);
++        }
++      } else if (value != null && !inComment && !Character.isWhitespace(c)) {
++        results.errors.invalidTextAfterIdentifier(identifier, c, line.get());
++      }
++    }
++
++    return results;
++  }
++  
++  private TomlParser() {}
++}
 --- net/minecraft/game/world/chunk/ChunkProviderClient.java
 +++ net/minecraft/game/world/chunk/ChunkProviderClient.java
 @@ -7,6 +7,7 @@
@@ -13403,6 +15149,107 @@
  		super.drawScreen(var1, var2, var3);
  	}
  }
+--- /dev/null
++++ com/moandjiezana/toml/MapValueWriter.java
+@@ -1,0 +1,98 @@
++package com.moandjiezana.toml;
++
++import static com.moandjiezana.toml.PrimitiveArrayValueWriter.PRIMITIVE_ARRAY_VALUE_WRITER;
++import static com.moandjiezana.toml.TableArrayValueWriter.TABLE_ARRAY_VALUE_WRITER;
++import static com.moandjiezana.toml.ValueWriters.WRITERS;
++
++import java.util.Map;
++import java.util.regex.Matcher;
++import java.util.regex.Pattern;
++
++class MapValueWriter implements ValueWriter {
++  static final ValueWriter MAP_VALUE_WRITER = new MapValueWriter();
++
++  private static final Pattern REQUIRED_QUOTING_PATTERN = Pattern.compile("^.*[^A-Za-z\\d_-].*$");
++
++  @Override
++  public boolean canWrite(Object value) {
++    return value instanceof Map;
++  }
++
++  @Override
++  public void write(Object value, WriterContext context) {
++    Map<?, ?> from = (Map<?, ?>) value;
++
++    if (hasPrimitiveValues(from, context)) {
++      context.writeKey();
++    }
++
++    // Render primitive types and arrays of primitive first so they are
++    // grouped under the same table (if there is one)
++    for (Map.Entry<?, ?> entry : from.entrySet()) {
++      Object key = entry.getKey();
++      Object fromValue = entry.getValue();
++      if (fromValue == null) {
++        continue;
++      }
++
++      ValueWriter valueWriter = WRITERS.findWriterFor(fromValue);
++      if (valueWriter.isPrimitiveType()) {
++        context.indent();
++        context.write(quoteKey(key)).write(" = ");
++        valueWriter.write(fromValue, context);
++        context.write('\n');
++      } else if (valueWriter == PRIMITIVE_ARRAY_VALUE_WRITER) {
++        context.setArrayKey(key.toString());
++        context.write(quoteKey(key)).write(" = ");
++        valueWriter.write(fromValue, context);
++        context.write('\n');
++      }
++    }
++
++    // Now render (sub)tables and arrays of tables
++    for (Object key : from.keySet()) {
++      Object fromValue = from.get(key);
++      if (fromValue == null) {
++        continue;
++      }
++
++      ValueWriter valueWriter = WRITERS.findWriterFor(fromValue);
++      if (valueWriter == this || valueWriter == ObjectValueWriter.OBJECT_VALUE_WRITER || valueWriter == TABLE_ARRAY_VALUE_WRITER) {
++        valueWriter.write(fromValue, context.pushTable(quoteKey(key)));
++      }
++    }
++  }
++
++  @Override
++  public boolean isPrimitiveType() {
++    return false;
++  }
++
++  private static String quoteKey(Object key) {
++    String stringKey = key.toString();
++    Matcher matcher = REQUIRED_QUOTING_PATTERN.matcher(stringKey);
++    if (matcher.matches()) {
++      stringKey = "\"" + stringKey + "\"";
++    }
++
++    return stringKey;
++  }
++
++  private static boolean hasPrimitiveValues(Map<?, ?> values, WriterContext context) {
++    for (Object key : values.keySet()) {
++      Object fromValue = values.get(key);
++      if (fromValue == null) {
++        continue;
++      }
++
++      ValueWriter valueWriter = WRITERS.findWriterFor(fromValue);
++      if (valueWriter.isPrimitiveType() || valueWriter == PRIMITIVE_ARRAY_VALUE_WRITER) {
++        return true;
++      }
++    }
++
++    return false;
++  }
++
++  private MapValueWriter() {}
++}
 --- net/minecraft/game/world/chunk/ChunkCache.java
 +++ net/minecraft/game/world/chunk/ChunkCache.java
 @@ -2,10 +2,11 @@
@@ -13851,11 +15698,11 @@
  			if(var12 > 0.0F) {
 --- /dev/null
 +++ net/minecraft/util/SharedConstants.java
-@@ -1,0 +1,23 @@
+@@ -1,0 +1,25 @@
 +package net.minecraft.util;
 +
 +public class SharedConstants {
-+    public static String SHORTENED_VERSION = "v0.1-milestone5";
++    public static String SHORTENED_VERSION = "v0.1-milestone6";
 +    public static String VERSION = "Order of the Talon "+SHORTENED_VERSION;
 +    public static boolean PANORAMA_SCREENSHOT_MODE = false;
 +    public static boolean DEBUG = true;
@@ -13870,6 +15717,8 @@
 +    public static int ATLAS_SHIFT = 1;
 +
 +    public static int CUSTOM_RENDER_TYPE = 64;
++
++    public static int DAY_LENGTH = 57600;
 +
 +    public static int getAtlasTexture(int x, int y) {
 +        return (y * 32) + x;
@@ -14512,6 +16361,275 @@
  			}
  
  			if(var4.count == 0) {
+--- /dev/null
++++ com/moandjiezana/toml/Identifier.java
+@@ -1,0 +1,266 @@
++package com.moandjiezana.toml;
++
++class Identifier {
++  
++  static final Identifier INVALID = new Identifier("", null);
++  
++  private static final String ALLOWED_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890_-";
++
++  private final String name;
++  private final Type type;
++  
++  static Identifier from(String name, Context context) {
++    Type type;
++    boolean valid;
++    name = name.trim();
++    if (name.startsWith("[[")) {
++      type = Type.TABLE_ARRAY;
++      valid = isValidTableArray(name, context);
++    } else if (name.startsWith("[")) {
++      type = Type.TABLE;
++      valid = isValidTable(name, context);
++    } else {
++      type = Type.KEY;
++      valid = isValidKey(name, context);
++    }
++    
++    if (!valid) {
++      return Identifier.INVALID;
++    }
++    
++    return new Identifier(extractName(name), type);
++  }
++
++  private Identifier(String name, Type type) {
++    this.name = name;
++    this.type = type;
++  }
++  
++  String getName() {
++    return name;
++  }
++  
++  String getBareName() {
++    if (isKey()) {
++      return name;
++    }
++    
++    if (isTable()) {
++      return name.substring(1, name.length() - 1);
++    }
++    
++    return name.substring(2, name.length() - 2);
++  }
++  
++  boolean isKey() {
++    return type == Type.KEY;
++  }
++  
++  boolean isTable() {
++    return type == Type.TABLE;
++  }
++  
++  boolean isTableArray() {
++    return type == Type.TABLE_ARRAY;
++  }
++  
++  private static enum Type {
++    KEY, TABLE, TABLE_ARRAY;
++  }
++  
++  private static String extractName(String raw) {
++    boolean quoted = false;
++    StringBuilder sb = new StringBuilder();
++    
++    for (int i = 0; i < raw.length(); i++) {
++      char c = raw.charAt(i);
++      if (c == '"' && (i == 0 || raw.charAt(i - 1) != '\\')) {
++        quoted = !quoted;
++        sb.append('"');
++      } else if (quoted || !Character.isWhitespace(c)) {
++        sb.append(c);
++      }
++    }
++    
++    return StringValueReaderWriter.STRING_VALUE_READER_WRITER.replaceUnicodeCharacters(sb.toString());
++  }
++  
++  private static boolean isValidKey(String name, Context context) {
++    if (name.trim().isEmpty()) {
++      context.errors.invalidKey(name, context.line.get());
++      return false;
++    }
++    
++    boolean quoted = false;
++    for (int i = 0; i < name.length(); i++) {
++      char c = name.charAt(i);
++      
++      if (c == '"' && (i == 0 || name.charAt(i - 1) != '\\')) {
++        if (!quoted && i > 0 && name.charAt(i - 1) != '.') {
++          context.errors.invalidKey(name, context.line.get());
++          return false;
++        }
++        quoted = !quoted;
++      } else if (!quoted && (ALLOWED_CHARS.indexOf(c) == -1)) {
++        context.errors.invalidKey(name, context.line.get());
++        return false;
++      }
++    }
++    
++    return true;
++  }
++  
++  private static boolean isValidTable(String name, Context context) {
++    boolean valid = true;
++    
++    if (!name.endsWith("]")) {
++      valid = false;
++    }
++    
++    String trimmed = name.substring(1, name.length() - 1).trim();
++    if (trimmed.isEmpty() || trimmed.charAt(0) == '.' || trimmed.endsWith(".")) {
++      valid = false;
++    }
++    
++    if (!valid) {
++      context.errors.invalidTable(name, context.line.get());
++      return false;
++    }
++    
++    boolean quoted = false;
++    boolean dotAllowed = false;
++    boolean quoteAllowed = true;
++    boolean charAllowed = true;
++    
++    for (int i = 0; i < trimmed.length(); i++) {
++      char c = trimmed.charAt(i);
++      
++      if (!valid) {
++        break;
++      }
++      
++      if (Keys.isQuote(c)) {
++        if (!quoteAllowed) {
++          valid = false;
++        } else if (quoted && trimmed.charAt(i - 1) != '\\') {
++          charAllowed = false;
++          dotAllowed = true;
++          quoteAllowed = false;
++        } else if (!quoted) {
++          quoted = true;
++          quoteAllowed = true;
++        }
++      } else if (quoted) {
++        continue;
++      } else if (c == '.') {
++        if (dotAllowed) {
++          charAllowed = true;
++          dotAllowed = false;
++          quoteAllowed = true;
++        } else {
++          context.errors.emptyImplicitTable(name, context.line.get());
++          return false;
++        }
++      } else if (Character.isWhitespace(c)) {
++        char prev = trimmed.charAt(i - 1);
++        if (!Character.isWhitespace(prev) && prev != '.') {
++          charAllowed = false;
++          dotAllowed = true;
++          quoteAllowed = true;
++        }
++      } else {
++        if (charAllowed && ALLOWED_CHARS.indexOf(c) > -1) {
++          charAllowed = true;
++          dotAllowed = true;
++          quoteAllowed = false;
++        } else {
++          valid = false;
++        }
++      }
++    }
++    
++    if (!valid) {
++      context.errors.invalidTable(name, context.line.get());
++      return false;
++    }
++    
++    return true;
++  }
++
++  private static boolean isValidTableArray(String line, Context context) {
++    boolean valid = true;
++    
++    if (!line.endsWith("]]")) {
++      valid = false;
++    }
++    
++    String trimmed = line.substring(2, line.length() - 2).trim();
++    if (trimmed.isEmpty() || trimmed.charAt(0) == '.' || trimmed.endsWith(".")) {
++      valid = false;
++    }
++    
++    if (!valid) {
++      context.errors.invalidTableArray(line, context.line.get());
++      return false;
++    }
++
++    boolean quoted = false;
++    boolean dotAllowed = false;
++    boolean quoteAllowed = true;
++    boolean charAllowed = true;
++    
++    for (int i = 0; i < trimmed.length(); i++) {
++      char c = trimmed.charAt(i);
++      
++      if (!valid) {
++        break;
++      }
++      
++      if (c == '"') {
++        if (!quoteAllowed) {
++          valid = false;
++        } else if (quoted && trimmed.charAt(i - 1) != '\\') {
++          charAllowed = false;
++          dotAllowed = true;
++          quoteAllowed = false;
++        } else if (!quoted) {
++          quoted = true;
++          quoteAllowed = true;
++        }
++      } else if (quoted) {
++        continue;
++      } else if (c == '.') {
++        if (dotAllowed) {
++          charAllowed = true;
++          dotAllowed = false;
++          quoteAllowed = true;
++        } else {
++          context.errors.emptyImplicitTable(line, context.line.get());
++          return false;
++        }
++      } else if (Character.isWhitespace(c)) {
++        char prev = trimmed.charAt(i - 1);
++        if (!Character.isWhitespace(prev) && prev != '.' && prev != '"') {
++          charAllowed = false;
++          dotAllowed = true;
++          quoteAllowed = true;
++        }
++      } else {
++        if (charAllowed && ALLOWED_CHARS.indexOf(c) > -1) {
++          charAllowed = true;
++          dotAllowed = true;
++          quoteAllowed = false;
++        } else {
++          valid = false;
++        }
++      }
++    }
++    
++    if (!valid) {
++      context.errors.invalidTableArray(line, context.line.get());
++      return false;
++    }
++    
++    return true;
++  }
++}
 --- net/minecraft/game/entity/animal/SquidEntity.java
 +++ net/minecraft/game/entity/animal/SquidEntity.java
 @@ -30,6 +30,7 @@
@@ -15091,6 +17209,304 @@
  					var1.setBlock(var3, var4 - 1, var5, Block.dirt.blockID);
  
  					int var16;
+--- /dev/null
++++ com/moandjiezana/toml/Results.java
+@@ -1,0 +1,295 @@
++package com.moandjiezana.toml;
++
++import java.util.ArrayDeque;
++import java.util.Deque;
++import java.util.HashSet;
++import java.util.Iterator;
++import java.util.Map;
++import java.util.Set;
++import java.util.concurrent.atomic.AtomicInteger;
++
++class Results {
++  
++  static class Errors {
++    
++    private final StringBuilder sb = new StringBuilder();
++    
++    void duplicateTable(String table, int line) {
++      sb.append("Duplicate table definition on line ")
++        .append(line)
++        .append(": [")
++        .append(table)
++        .append("]");
++    }
++
++    public void tableDuplicatesKey(String table, AtomicInteger line) {
++      sb.append("Key already exists for table defined on line ")
++        .append(line.get())
++        .append(": [")
++        .append(table)
++        .append("]");
++    }
++
++    public void keyDuplicatesTable(String key, AtomicInteger line) {
++      sb.append("Table already exists for key defined on line ")
++        .append(line.get())
++        .append(": ")
++        .append(key);
++    }
++    
++    void emptyImplicitTable(String table, int line) {
++      sb.append("Invalid table definition due to empty implicit table name: ")
++        .append(table);
++    }
++    
++    void invalidTable(String table, int line) {
++      sb.append("Invalid table definition on line ")
++        .append(line)
++        .append(": ")
++        .append(table)
++        .append("]");
++    }
++    
++    void duplicateKey(String key, int line) {
++      sb.append("Duplicate key");
++      if (line > -1) {
++        sb.append(" on line ")
++          .append(line);
++      }
++      sb.append(": ")
++        .append(key);
++    }
++    
++    void invalidTextAfterIdentifier(Identifier identifier, char text, int line) {
++      sb.append("Invalid text after key ")
++        .append(identifier.getName())
++        .append(" on line ")
++        .append(line)
++        .append(". Make sure to terminate the value or add a comment (#).");
++    }
++    
++    void invalidKey(String key, int line) {
++      sb.append("Invalid key on line ")
++        .append(line)
++        .append(": ")
++        .append(key);
++    }
++    
++    void invalidTableArray(String tableArray, int line) {
++      sb.append("Invalid table array definition on line ")
++        .append(line)
++        .append(": ")
++        .append(tableArray);
++    }
++    
++    void invalidValue(String key, String value, int line) {
++      sb.append("Invalid value on line ")
++        .append(line)
++        .append(": ")
++        .append(key)
++        .append(" = ")
++        .append(value);
++    }
++    
++    void unterminatedKey(String key, int line) {
++      sb.append("Key is not followed by an equals sign on line ")
++        .append(line)
++        .append(": ")
++        .append(key);
++    }
++    
++    void unterminated(String key, String value, int line) {
++      sb.append("Unterminated value on line ")
++        .append(line)
++        .append(": ")
++        .append(key)
++        .append(" = ")
++        .append(value.trim());
++    }
++
++    public void heterogenous(String key, int line) {
++      sb.append(key)
++        .append(" becomes a heterogeneous array on line ")
++        .append(line);
++    }
++    
++    boolean hasErrors() {
++      return sb.length() > 0;
++    }
++    
++    @Override
++    public String toString() {
++      return sb.toString();
++    }
++
++    public void add(Errors other) {
++      sb.append(other.sb);
++    }
++  }
++  
++  final Errors errors = new Errors();
++  private final Set<String> tables = new HashSet<String>();
++  private final Deque<Container> stack = new ArrayDeque<Container>();
++
++  Results() {
++    stack.push(new Container.Table(""));
++  }
++
++  void addValue(String key, Object value, AtomicInteger line) {
++    Container currentTable = stack.peek();
++    
++    if (value instanceof Map) {
++      String path = getInlineTablePath(key);
++      if (path == null) {
++        startTable(key, line);
++      } else if (path.isEmpty()) {
++        startTables(Identifier.from(key, null), line);
++      } else {
++        startTables(Identifier.from(path, null), line);
++      }
++      @SuppressWarnings("unchecked")
++      Map<String, Object> valueMap = (Map<String, Object>) value;
++      for (Map.Entry<String, Object> entry : valueMap.entrySet()) {
++        addValue(entry.getKey(), entry.getValue(), line);
++      }
++      stack.pop();
++    } else if (currentTable.accepts(key)) {
++      currentTable.put(key, value);
++    } else {
++      if (currentTable.get(key) instanceof Container) {
++        errors.keyDuplicatesTable(key, line);
++      } else {
++        errors.duplicateKey(key, line != null ? line.get() : -1);
++      }
++    }
++  }
++
++  void startTableArray(Identifier identifier, AtomicInteger line) {
++    String tableName = identifier.getBareName();
++    while (stack.size() > 1) {
++      stack.pop();
++    }
++
++    Keys.Key[] tableParts = Keys.split(tableName);
++    for (int i = 0; i < tableParts.length; i++) {
++      String tablePart = tableParts[i].name;
++      Container currentContainer = stack.peek();
++
++      if (currentContainer.get(tablePart) instanceof Container.TableArray) {
++        Container.TableArray currentTableArray = (Container.TableArray) currentContainer.get(tablePart);
++        stack.push(currentTableArray);
++
++        if (i == tableParts.length - 1) {
++          currentTableArray.put(tablePart, new Container.Table());
++        }
++
++        stack.push(currentTableArray.getCurrent());
++        currentContainer = stack.peek();
++      } else if (currentContainer.get(tablePart) instanceof Container.Table && i < tableParts.length - 1) {
++        Container nextTable = (Container) currentContainer.get(tablePart);
++        stack.push(nextTable);
++      } else if (currentContainer.accepts(tablePart)) {
++        Container newContainer = i == tableParts.length - 1 ? new Container.TableArray() : new Container.Table();
++        addValue(tablePart, newContainer, line);
++        stack.push(newContainer);
++
++        if (newContainer instanceof Container.TableArray) {
++          stack.push(((Container.TableArray) newContainer).getCurrent());
++        }
++      } else {
++        errors.duplicateTable(tableName, line.get());
++        break;
++      }
++    }
++  }
++
++  void startTables(Identifier id, AtomicInteger line) {
++    String tableName = id.getBareName();
++    
++    while (stack.size() > 1) {
++      stack.pop();
++    }
++
++    Keys.Key[] tableParts = Keys.split(tableName);
++    for (int i = 0; i < tableParts.length; i++) {
++      String tablePart = tableParts[i].name;
++      Container currentContainer = stack.peek();
++      if (currentContainer.get(tablePart) instanceof Container) {
++        Container nextTable = (Container) currentContainer.get(tablePart);
++        if (i == tableParts.length - 1 && !nextTable.isImplicit()) {
++          errors.duplicateTable(tableName, line.get());
++          return;
++        }
++        stack.push(nextTable);
++        if (stack.peek() instanceof Container.TableArray) {
++          stack.push(((Container.TableArray) stack.peek()).getCurrent());
++        }
++      } else if (currentContainer.accepts(tablePart)) {
++        startTable(tablePart, i < tableParts.length - 1, line);
++      } else {
++        errors.tableDuplicatesKey(tablePart, line);
++        break;
++      }
++    }
++  }
++
++  /**
++   * Warning: After this method has been called, this instance is no longer usable.
++   */
++  Map<String, Object> consume() {
++    Container values = stack.getLast();
++    stack.clear();
++
++    return ((Container.Table) values).consume();
++  }
++
++  private Container startTable(String tableName, AtomicInteger line) {
++    Container newTable = new Container.Table(tableName);
++    addValue(tableName, newTable, line);
++    stack.push(newTable);
++
++    return newTable;
++  }
++
++  private Container startTable(String tableName, boolean implicit, AtomicInteger line) {
++    Container newTable = new Container.Table(tableName, implicit);
++    addValue(tableName, newTable, line);
++    stack.push(newTable);
++
++    return newTable;
++  }
++  
++  private String getInlineTablePath(String key) {
++    Iterator<Container> descendingIterator = stack.descendingIterator();
++    StringBuilder sb = new StringBuilder();
++    
++    while (descendingIterator.hasNext()) {
++      Container next = descendingIterator.next();
++      if (next instanceof Container.TableArray) {
++        return null;
++      }
++      
++      Container.Table table = (Container.Table) next;
++      
++      if (table.name == null) {
++        break;
++      }
++      
++      if (sb.length() > 0) {
++        sb.append('.');
++      }
++      
++      sb.append(table.name);
++    }
++    
++    if (sb.length() > 0) {
++      sb.append('.');
++    }
++
++    sb.append(key)
++      .insert(0, '[')
++      .append(']');
++    
++    return sb.toString();
++  }
++}
 --- net/minecraft/game/world/terrain/NetherChunkProvider.java
 +++ net/minecraft/game/world/terrain/NetherChunkProvider.java
 @@ -15,6 +15,7 @@
@@ -15456,12 +17872,16 @@
  				}
  			} else {
  				this.curBlockDamage = 0.0F;
-@@ -120,6 +123,6 @@
+@@ -120,6 +123,10 @@
  
  	public void updateController() {
  		this.prevBlockDamage = this.curBlockDamage;
 -		this.mc.sndManager.playRandomMusicIfReady();
-+		this.mc.sndManager.playRandomMusicIfReady(this.mc.theWorld.isCreativeWorld());
++		if(!this.mc.theWorld.weatherManager.isRaining()) {
++			this.mc.sndManager.playRandomMusicIfReady(this.mc.theWorld.isCreativeWorld());
++		} else {
++			this.mc.sndManager.fadeRandomMusic();
++		}
  	}
  }
 --- net/minecraft/game/world/block/SpongeBlock.java
@@ -15530,6 +17950,154 @@
  	}
  
  	public void displayGUIChest(Inventory var1) {
+--- /dev/null
++++ com/moandjiezana/toml/WriterContext.java
+@@ -1,0 +1,145 @@
++package com.moandjiezana.toml;
++
++import java.io.IOException;
++import java.io.Writer;
++import java.util.Arrays;
++
++class WriterContext {
++  private String arrayKey = null;
++  private boolean isArrayOfTable = false;
++  private boolean empty = true;
++  private final String key;
++  private final String currentTableIndent;
++  private final String currentFieldIndent;
++  private final Writer output;
++  private final IndentationPolicy indentationPolicy;
++  private final DatePolicy datePolicy;
++
++  WriterContext(IndentationPolicy indentationPolicy, DatePolicy datePolicy, Writer output) {
++    this("", "", output, indentationPolicy, datePolicy);
++  }
++
++  WriterContext pushTable(String newKey) {
++    String newIndent = "";
++    if (!key.isEmpty()) {
++      newIndent = growIndent(indentationPolicy);
++    }
++
++    String fullKey = key.isEmpty() ? newKey : key + "." + newKey;
++
++    WriterContext subContext = new WriterContext(fullKey, newIndent, output, indentationPolicy, datePolicy);
++    if (!empty) {
++      subContext.empty = false;
++    }
++    
++    return subContext;
++  }
++
++  WriterContext pushTableFromArray() {
++    WriterContext subContext = new WriterContext(key, currentTableIndent, output, indentationPolicy, datePolicy);
++    if (!empty) {
++      subContext.empty = false;
++    }
++    subContext.setIsArrayOfTable(true);
++
++    return subContext;
++  }
++  
++  WriterContext write(String s) {
++    try {
++      output.write(s);
++      if (empty && !s.isEmpty()) {
++        empty = false;
++      }
++      
++      return this;
++    } catch (IOException e) {
++      throw new RuntimeException(e);
++    }
++  }
++
++  void write(char[] chars) {
++    for (char c : chars) {
++      write(c);
++    }
++  }
++  
++  WriterContext write(char c) {
++    try {
++      output.write(c);
++      empty = false;
++      
++      return this;
++    } catch (IOException e) {
++      throw new RuntimeException(e);
++    }
++  }
++
++  void writeKey() {
++    if (key.isEmpty()) {
++      return;
++    }
++
++    if (!empty) {
++      write('\n');
++    }
++
++    write(currentTableIndent);
++
++    if (isArrayOfTable) {
++      write("[[").write(key).write("]]\n");
++    } else {
++      write('[').write(key).write("]\n");
++    }
++  }
++
++  void writeArrayDelimiterPadding() {
++    for (int i = 0; i < indentationPolicy.getArrayDelimiterPadding(); i++) {
++      write(' ');
++    }
++  }
++
++  void indent() {
++    if (!key.isEmpty()) {
++      write(currentFieldIndent);
++    }
++  }
++  
++  DatePolicy getDatePolicy() {
++    return datePolicy;
++  }
++
++  WriterContext setIsArrayOfTable(boolean isArrayOfTable) {
++    this.isArrayOfTable = isArrayOfTable;
++    return this;
++  }
++
++  WriterContext setArrayKey(String arrayKey) {
++    this.arrayKey = arrayKey;
++    return this;
++  }
++
++  String getContextPath() {
++    return key.isEmpty() ? arrayKey : key + "." + arrayKey;
++  }
++
++  private String growIndent(IndentationPolicy indentationPolicy) {
++    return currentTableIndent + fillStringWithSpaces(indentationPolicy.getTableIndent());
++  }
++
++  private String fillStringWithSpaces(int count) {
++    char[] chars = new char[count];
++    Arrays.fill(chars, ' ');
++
++    return new String(chars);
++  }
++
++  private WriterContext(String key, String tableIndent, Writer output, IndentationPolicy indentationPolicy, DatePolicy datePolicy) {
++    this.key = key;
++    this.output = output;
++    this.indentationPolicy = indentationPolicy;
++    this.currentTableIndent = tableIndent;
++    this.datePolicy = datePolicy;
++    this.currentFieldIndent = tableIndent + fillStringWithSpaces(this.indentationPolicy.getKeyValueIndent());
++  }
++}
 --- net/minecraft/game/world/terrain/OverworldChunkProvider.java
 +++ net/minecraft/game/world/terrain/OverworldChunkProvider.java
 @@ -1,8 +1,10 @@
@@ -16176,6 +18744,191 @@
  	}
  }
 --- /dev/null
++++ com/moandjiezana/toml/StringValueReaderWriter.java
+@@ -1,0 +1,128 @@
++package com.moandjiezana.toml;
++
++import java.net.URI;
++import java.net.URL;
++import java.util.concurrent.atomic.AtomicInteger;
++import java.util.regex.Matcher;
++import java.util.regex.Pattern;
++
++class StringValueReaderWriter implements ValueReader, ValueWriter {
++  
++  static final StringValueReaderWriter STRING_VALUE_READER_WRITER = new StringValueReaderWriter();
++  private static final Pattern UNICODE_REGEX = Pattern.compile("\\\\[uU](.{4})");
++
++  static private final String[] specialCharacterEscapes = new String[93];
++
++  static {
++    specialCharacterEscapes['\b'] = "\\b";
++    specialCharacterEscapes['\t'] = "\\t";
++    specialCharacterEscapes['\n'] = "\\n";
++    specialCharacterEscapes['\f'] = "\\f";
++    specialCharacterEscapes['\r'] = "\\r";
++    specialCharacterEscapes['"'] = "\\\"";
++    specialCharacterEscapes['\\'] = "\\\\";
++  }
++
++  @Override
++  public boolean canRead(String s) {
++    return s.startsWith("\"");
++  }
++
++  @Override
++  public Object read(String s, AtomicInteger index, Context context) {
++    int startIndex = index.incrementAndGet();
++    int endIndex = -1;
++
++    for (int i = index.get(); i < s.length(); i = index.incrementAndGet()) {
++      char ch = s.charAt(i);
++      if (ch == '"' && s.charAt(i - 1) != '\\') {
++        endIndex = i;
++        break;
++      }
++    }
++
++    if (endIndex == -1) {
++      Results.Errors errors = new Results.Errors();
++      errors.unterminated(context.identifier.getName(), s.substring(startIndex - 1), context.line.get());
++      return errors;
++    }
++    
++    String raw = s.substring(startIndex, endIndex);
++    s = replaceUnicodeCharacters(raw);
++    s = replaceSpecialCharacters(s);
++    
++    if (s == null) {
++      Results.Errors errors = new Results.Errors();
++      errors.invalidValue(context.identifier.getName(), raw, context.line.get());
++      return errors;
++    }
++
++    return s;
++  }
++
++  String replaceUnicodeCharacters(String value) {
++    Matcher unicodeMatcher = UNICODE_REGEX.matcher(value);
++
++    while (unicodeMatcher.find()) {
++      value = value.replace(unicodeMatcher.group(), new String(Character.toChars(Integer.parseInt(unicodeMatcher.group(1), 16))));
++    }
++    return value;
++  }
++
++  String replaceSpecialCharacters(String s) {
++    for (int i = 0; i < s.length() - 1; i++) {
++      char ch = s.charAt(i);
++      char next = s.charAt(i + 1);
++
++      if (ch == '\\' && next == '\\') {
++        i++;
++      } else if (ch == '\\' && !(next == 'b' || next == 'f' || next == 'n' || next == 't' || next == 'r' || next == '"' || next == '\\')) {
++        return null;
++      }
++    }
++
++    return s.replace("\\n", "\n")
++      .replace("\\\"", "\"")
++      .replace("\\t", "\t")
++      .replace("\\r", "\r")
++      .replace("\\\\", "\\")
++      .replace("\\/", "/")
++      .replace("\\b", "\b")
++      .replace("\\f", "\f");
++  }
++
++  @Override
++  public boolean canWrite(Object value) {
++    return value instanceof String || value instanceof Character || value instanceof URL || value instanceof URI || value instanceof Enum;
++  }
++
++  @Override
++  public void write(Object value, WriterContext context) {
++    context.write('"');
++    escapeUnicode(value.toString(), context);
++    context.write('"');
++  }
++
++  @Override
++  public boolean isPrimitiveType() {
++    return true;
++  }
++
++  private void escapeUnicode(String in, WriterContext context) {
++    for (int i = 0; i < in.length(); i++) {
++      int codePoint = in.codePointAt(i);
++      if (codePoint < specialCharacterEscapes.length && specialCharacterEscapes[codePoint] != null) {
++        context.write(specialCharacterEscapes[codePoint]);
++      } else {
++        context.write(in.charAt(i));
++      }
++    }
++  }
++
++  private StringValueReaderWriter() {}
++
++  @Override
++  public String toString() {
++    return "string";
++  }
++}
+--- /dev/null
++++ com/moandjiezana/toml/MultilineLiteralStringValueReader.java
+@@ -1,0 +1,51 @@
++package com.moandjiezana.toml;
++
++import java.util.concurrent.atomic.AtomicInteger;
++
++class MultilineLiteralStringValueReader implements ValueReader {
++  
++  static final MultilineLiteralStringValueReader MULTILINE_LITERAL_STRING_VALUE_READER = new MultilineLiteralStringValueReader(); 
++  
++  @Override
++  public boolean canRead(String s) {
++    return s.startsWith("'''");
++  }
++
++  @Override
++  public Object read(String s, AtomicInteger index, Context context) {
++    AtomicInteger line = context.line;
++    int startLine = line.get();
++    int originalStartIndex = index.get();
++    int startIndex = index.addAndGet(3);
++    int endIndex = -1;
++    
++    if (s.charAt(startIndex) == '\n') {
++      startIndex = index.incrementAndGet();
++      line.incrementAndGet();
++    }
++    
++    for (int i = startIndex; i < s.length(); i = index.incrementAndGet()) {
++      char c = s.charAt(i);
++
++      if (c == '\n') {
++        line.incrementAndGet();
++      }
++      
++      if (c == '\'' && s.length() > i + 2 && s.charAt(i + 1) == '\'' && s.charAt(i + 2) == '\'') {
++        endIndex = i;
++        index.addAndGet(2);
++        break;
++      }
++    }
++    
++    if (endIndex == -1) {
++      Results.Errors errors = new Results.Errors();
++      errors.unterminated(context.identifier.getName(), s.substring(originalStartIndex), startLine);
++      return errors;
++    }
++
++    return s.substring(startIndex, endIndex);
++  }
++
++  private MultilineLiteralStringValueReader() {}
++}
+--- /dev/null
 +++ net/minecraft/util/MetadataByteArray.java
 @@ -1,0 +1,26 @@
 +package net.minecraft.util;
@@ -16493,6 +19246,169 @@
  		}
  
  	}
+--- /dev/null
++++ com/moandjiezana/toml/DateValueReaderWriter.java
+@@ -1,0 +1,160 @@
++package com.moandjiezana.toml;
++
++import java.text.DateFormat;
++import java.text.SimpleDateFormat;
++import java.util.Date;
++import java.util.concurrent.atomic.AtomicInteger;
++import java.util.regex.Matcher;
++import java.util.regex.Pattern;
++
++class DateValueReaderWriter implements ValueReader, ValueWriter {
++
++  static final DateValueReaderWriter DATE_VALUE_READER_WRITER = new DateValueReaderWriter();
++  static final DateValueReaderWriter DATE_PARSER_JDK_6 = new DateConverterJdk6();
++  private static final Pattern DATE_REGEX = Pattern.compile("(\\d{4}-[0-1][0-9]-[0-3][0-9]T[0-2][0-9]:[0-5][0-9]:[0-5][0-9])(\\.\\d*)?(Z|(?:[+\\-]\\d{2}:\\d{2}))(.*)");
++
++  @Override
++  public boolean canRead(String s) {
++    if (s.length() < 5) {
++      return false;
++    }
++    
++    for (int i = 0; i < 5; i++) {
++      char c = s.charAt(i);
++      
++      if (i < 4) {
++        if (!Character.isDigit(c)) {
++          return false;
++        }
++      } else if (c != '-') {
++        return false;
++      }
++    }
++
++    return true;
++  }
++
++  @Override
++  public Object read(String original, AtomicInteger index, Context context) {
++    StringBuilder sb = new StringBuilder();
++    
++    for (int i = index.get(); i < original.length(); i = index.incrementAndGet()) {
++      char c = original.charAt(i);
++      if (Character.isDigit(c) || c == '-' || c == '+' || c == ':' || c == '.' || c == 'T' || c == 'Z') {
++        sb.append(c);
++      } else {
++        index.decrementAndGet();
++        break;
++      }
++    }
++    
++    String s = sb.toString();
++    Matcher matcher = DATE_REGEX.matcher(s);
++    
++    if (!matcher.matches()) {
++      Results.Errors errors = new Results.Errors();
++      errors.invalidValue(context.identifier.getName(), s, context.line.get());
++      return errors;
++    }
++    
++    String dateString = matcher.group(1);
++    String zone = matcher.group(3);
++    String fractionalSeconds = matcher.group(2);
++    String format = "yyyy-MM-dd'T'HH:mm:ss";
++    if (fractionalSeconds != null && !fractionalSeconds.isEmpty()) {
++      format += ".SSS";
++      dateString += fractionalSeconds;
++    }
++    format += "Z";
++    if ("Z".equals(zone)) {
++      dateString += "+0000";
++    } else if (zone.contains(":")) {
++      dateString += zone.replace(":", "");
++    }
++
++    try {
++      SimpleDateFormat dateFormat = new SimpleDateFormat(format);
++      dateFormat.setLenient(false);
++      return dateFormat.parse(dateString);
++    } catch (Exception e) {
++      Results.Errors errors = new Results.Errors();
++      errors.invalidValue(context.identifier.getName(), s, context.line.get());
++      return errors;
++    }
++  }
++
++  @Override
++  public boolean canWrite(Object value) {
++    return value instanceof Date;
++  }
++
++  @Override
++  public void write(Object value, WriterContext context) {
++    DateFormat formatter = getFormatter(context.getDatePolicy());
++    context.write(formatter.format(value));
++  }
++
++  @Override
++  public boolean isPrimitiveType() {
++    return true;
++  }
++  
++  private DateFormat getFormatter(DatePolicy datePolicy) {
++    boolean utc = "UTC".equals(datePolicy.getTimeZone().getID());
++    String format;
++    
++    if (utc && datePolicy.isShowFractionalSeconds()) {
++      format = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'";
++    } else if (utc) {
++      format = "yyyy-MM-dd'T'HH:mm:ss'Z'";
++    } else if (datePolicy.isShowFractionalSeconds()) {
++      format = getTimeZoneAndFractionalSecondsFormat();
++    } else {
++      format = getTimeZoneFormat();
++    }
++    SimpleDateFormat formatter = new SimpleDateFormat(format);
++    formatter.setTimeZone(datePolicy.getTimeZone());
++    
++    return formatter;
++  }
++
++  String getTimeZoneFormat() {
++    return "yyyy-MM-dd'T'HH:mm:ssXXX";
++  }
++
++  String getTimeZoneAndFractionalSecondsFormat() {
++    return "yyyy-MM-dd'T'HH:mm:ss.SSSXXX";
++  }
++  
++  private DateValueReaderWriter() {}
++  
++  private static class DateConverterJdk6 extends DateValueReaderWriter {
++    @Override
++    public void write(Object value, WriterContext context) {
++      DateFormat formatter = super.getFormatter(context.getDatePolicy());
++      String date = formatter.format(value);
++      
++      if ("UTC".equals(context.getDatePolicy().getTimeZone().getID())) {
++        context.write(date);
++      } else {
++        int insertionIndex = date.length() - 2;
++        context.write(date.substring(0, insertionIndex)).write(':').write(date.substring(insertionIndex));
++      }
++    }
++    
++    @Override
++    String getTimeZoneAndFractionalSecondsFormat() {
++      return "yyyy-MM-dd'T'HH:mm:ss.SSSZ";
++    }
++    
++    @Override
++    String getTimeZoneFormat() {
++      return "yyyy-MM-dd'T'HH:mm:ssZ";
++    }
++  }
++
++  @Override
++  public String toString() {
++    return "datetime";
++  }
++}
 --- net/minecraft/game/entity/monster/SpiderEntity.java
 +++ net/minecraft/game/entity/monster/SpiderEntity.java
 @@ -12,6 +12,7 @@
@@ -16628,24 +19544,23 @@
  	private void addRainParticles() {
 -		float var1 = this.mc.theWorld.getRainingStrength(1.0F);
 -		if(!this.mc.gameSettings.fancyGraphics) {
-+		float var1 = 1.0F; // intensity
++		float var1 = this.mc.theWorld.weatherManager.rainIntensity(); // intensity
 +		if(this.mc.gameSettings.fancyGraphics == 0) {
  			var1 /= 2.0F;
  		}
  
-@@ -622,7 +647,10 @@
+@@ -622,7 +647,9 @@
  				int var17 = var6 + this.random.nextInt(var7) - this.random.nextInt(var7);
  				int var18 = var3.getTopSolidOrLiquidBlock(var16, var17);
  				int var19 = var3.getBlockId(var16, var18 - 1, var17);
 -				if(var18 <= var5 + var7 && var18 >= var5 - var7 && var3.getBiomeSource().getBiomeGenAt(var16, var17).canSpawnLightningBolt()) {
 +				Biome b = var3.getBiomeSource().getBiomeGenAt(var16, var17);
-+				double h = var3.weatherManager.getHumidity(var16,var17);
-+				if(var18 <= var5 + var7 && var18 >= var5 - var7 && b.canSpawnLightningBolt() && h >= 50) {
-+					var1 = MathHelper.lerp(Math.min(1F,(float)(h-50)/15F),0F,1.0F);
++				if(var18 <= var5 + var7 && var18 >= var5 - var7 && b.canSpawnLightningBolt()) {
++					var1 = var3.weatherManager.rainIntensity();
  					float var20 = this.random.nextFloat();
  					float var21 = this.random.nextFloat();
  					if(var19 > 0) {
-@@ -645,9 +673,9 @@
+@@ -645,9 +672,9 @@
  			if(var14 > 0 && this.random.nextInt(3) < this.rainSoundCounter++) {
  				this.rainSoundCounter = 0;
  				if(var10 > var2.posY + 1.0D && var3.getTopSolidOrLiquidBlock(MathHelper.floor(var2.posX), MathHelper.floor(var2.posZ)) > MathHelper.floor(var2.posY)) {
@@ -16657,19 +19572,17 @@
  				}
  			}
  
-@@ -655,8 +683,9 @@
+@@ -655,7 +682,8 @@
  	}
  
  	protected void renderRainSnow(float var1) {
 -		float var2 = this.mc.theWorld.getRainingStrength(var1);
--		if(var2 > 0.0F) {
 +		//if(true) return;
-+		float var2 = 1.0F; // intensity
-+		//if(var2 > 0.0F) {
++		float var2 = this.mc.theWorld.weatherManager.rainIntensity(); // intensity
+ 		if(var2 > 0.0F) {
  			LivingEntity var3 = this.mc.renderViewEntity;
  			World var4 = this.mc.theWorld;
- 			int var5 = MathHelper.floor(var3.posX);
-@@ -674,7 +703,7 @@
+@@ -674,7 +702,7 @@
  			double var13 = var3.lastTickPosZ + (var3.posZ - var3.lastTickPosZ) * (double)var1;
  			int var15 = MathHelper.floor(var11);
  			byte var16 = 5;
@@ -16678,7 +19591,7 @@
  				var16 = 10;
  			}
  
-@@ -742,7 +771,7 @@
+@@ -742,7 +770,7 @@
  			}
  
  			GL11.glBindTexture(GL11.GL_TEXTURE_2D, this.mc.textureRegistry.getTexture("/environment/rain.png"));
@@ -16687,18 +19600,17 @@
  				var16 = 10;
  			}
  
-@@ -751,7 +780,9 @@
+@@ -751,7 +779,8 @@
  			for(var19 = var5 - var16; var19 <= var5 + var16; ++var19) {
  				for(var20 = var7 - var16; var20 <= var7 + var16; ++var20) {
  					var21 = var17[var18++];
 -					if(var21.canSpawnLightningBolt()) {
-+					double h = var4.weatherManager.getHumidity(var19,var20);
-+					if(var21.canSpawnLightningBolt() && h >= 50) {
-+						var2 = MathHelper.lerp(Math.min(1F,(float)(h-50)/15F),0F,1.0F);
++					if(var21.canSpawnLightningBolt() && var4.weatherManager.isRaining()) {
++						var2 = var4.weatherManager.rainIntensity();
  						var22 = var4.getTopSolidOrLiquidBlock(var19, var20);
  						var23 = var6 - var16;
  						var24 = var6 + var16;
-@@ -771,7 +802,7 @@
+@@ -771,7 +800,7 @@
  							double var39 = (double)((float)var20 + 0.5F) - var3.posZ;
  							float var40 = MathHelper.sqrt(var38 * var38 + var39 * var39) / (float)var16;
  							var8.startDrawingQuads();
@@ -16707,7 +19619,7 @@
  							GL11.glColor4f(var32, var32, var32, ((1.0F - var40 * var40) * 0.5F + 0.5F) * var2);
  							var8.setTranslationD(-var9 * 1.0D, -var11 * 1.0D, -var13 * 1.0D);
  							var8.addVertexWithUV((double)(var19 + 0), (double)var23, (double)var20 + 0.5D, (double)(0.0F * var37), (double)((float)var23 * var37 / 4.0F + var26 * var37));
-@@ -788,11 +819,12 @@
+@@ -788,6 +817,7 @@
  					}
  				}
  			}
@@ -16715,13 +19627,7 @@
  
  			GL11.glEnable(GL11.GL_CULL_FACE);
  			GL11.glDisable(GL11.GL_BLEND);
- 			GL11.glAlphaFunc(GL11.GL_GREATER, 0.1F);
--		}
-+		//}
- 	}
- 
- 	public void func_905_b() {
-@@ -822,7 +854,7 @@
+@@ -822,7 +852,7 @@
  		this.fogColorRed += (var6 - this.fogColorRed) * var4;
  		this.fogColorGreen += (var7 - this.fogColorGreen) * var4;
  		this.fogColorBlue += (var8 - this.fogColorBlue) * var4;
@@ -16730,7 +19636,7 @@
  		float var11;
  		float var12;
  		if(var10 > 0.0F) {
-@@ -833,7 +865,7 @@
+@@ -833,7 +863,7 @@
  			this.fogColorBlue *= var12;
  		}
  
@@ -16739,7 +19645,7 @@
  		if(var11 > 0.0F) {
  			var12 = 1.0F - var11 * 0.5F;
  			this.fogColorRed *= var12;
-@@ -873,6 +905,7 @@
+@@ -873,6 +903,7 @@
  	}
  
  	private void setupFog(int var1, float var2) {
@@ -16747,7 +19653,7 @@
  		LivingEntity var3 = this.mc.renderViewEntity;
  		GL11.glFog(GL11.GL_FOG_COLOR, this.func_908_a(this.fogColorRed, this.fogColorGreen, this.fogColorBlue, 1.0F));
  		GL11.glNormal3f(0.0F, -1.0F, 0.0F);
-@@ -918,8 +951,8 @@
+@@ -918,8 +949,8 @@
  			}
  		} else {
  			GL11.glFogi(GL11.GL_FOG_MODE, GL11.GL_LINEAR);
@@ -17663,6 +20569,18 @@
 +		return waterBuffer[var5 << 8 | var4];
 +	}
  }
+--- /dev/null
++++ com/moandjiezana/toml/ValueWriter.java
+@@ -1,0 +1,9 @@
++package com.moandjiezana.toml;
++
++interface ValueWriter {
++  boolean canWrite(Object value);
++
++  void write(Object value, WriterContext context);
++
++  boolean isPrimitiveType();
++}
 --- net/minecraft/game/world/block/ObsidianBlock.java
 +++ net/minecraft/game/world/block/ObsidianBlock.java
 @@ -4,7 +4,7 @@
@@ -17846,6 +20764,31 @@
 +		return 2;
  	}
  }
+--- /dev/null
++++ com/moandjiezana/toml/DatePolicy.java
+@@ -1,0 +1,22 @@
++package com.moandjiezana.toml;
++
++import java.util.TimeZone;
++
++class DatePolicy {
++
++  private final TimeZone timeZone;
++  private final boolean showFractionalSeconds;
++  
++  DatePolicy(TimeZone timeZone, boolean showFractionalSeconds) {
++    this.timeZone = timeZone;
++    this.showFractionalSeconds = showFractionalSeconds;
++  }
++
++  TimeZone getTimeZone() {
++    return timeZone;
++  }
++
++  boolean isShowFractionalSeconds() {
++    return showFractionalSeconds;
++  }
++}
 --- net/minecraft/game/entity/monster/SkeletonEntity.java
 +++ net/minecraft/game/entity/monster/SkeletonEntity.java
 @@ -14,6 +14,7 @@
@@ -17918,7 +20861,16 @@
  			this.renderPumpkinBlur(var6, var7);
  		}
  
-@@ -77,11 +86,12 @@
+@@ -55,6 +64,8 @@
+ 			this.renderPortalOverlay(var10, var6, var7);
+ 		}
+ 
++		GL11.glPushMatrix();
++		GL11.glTranslatef(0,-4,0);
+ 		GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
+ 		GL11.glBindTexture(GL11.GL_TEXTURE_2D, this.mc.textureRegistry.getTexture("/gui/gui.png"));
+ 		InventoryPlayer var11 = this.mc.thePlayer.inventory;
+@@ -77,11 +88,12 @@
  		int var15;
  		int var16;
  		int var17;
@@ -17932,7 +20884,7 @@
  				var17 = var7 - 32;
  				if(var15 > 0) {
  					var18 = var6 / 2 + 91 - var16 * 8 - 9;
-@@ -98,6 +108,7 @@
+@@ -98,6 +110,7 @@
  					}
  				}
  
@@ -17940,7 +20892,7 @@
  				byte var28 = 0;
  				if(var12) {
  					var28 = 1;
-@@ -126,8 +137,25 @@
+@@ -126,8 +139,25 @@
  				if(var16 * 2 + 1 == var13) {
  					this.drawTexturedRect(var19, var17, 61, 0, 9, 9);
  				}
@@ -17966,7 +20918,15 @@
  			if(this.mc.thePlayer.isInsideOfMaterial(Material.water)) {
  				var16 = (int)Math.ceil((double)(this.mc.thePlayer.air - 2) * 10.0D / 300.0D);
  				var17 = (int)Math.ceil((double)this.mc.thePlayer.air * 10.0D / 300.0D) - var16;
-@@ -179,24 +207,48 @@
+@@ -157,6 +187,7 @@
+ 
+ 		RenderHelper.disableStandardItemLighting();
+ 		GL11.glDisable(GL12.GL_RESCALE_NORMAL);
++		GL11.glPopMatrix();
+ 		if(this.mc.thePlayer.getSleepTimer() > 0) {
+ 			GL11.glDisable(GL11.GL_DEPTH_TEST);
+ 			GL11.glDisable(GL11.GL_ALPHA_TEST);
+@@ -179,24 +210,47 @@
  				GL11.glTranslatef(0.0F, 32.0F, 0.0F);
  			}
  
@@ -18014,8 +20974,7 @@
 +				renderDebugText(var8, "Biome: " + biome.name + " (No Climate Data)", 2, 9, 14737632);
 +			}
 +			WeatherManager wm = this.mc.theWorld.weatherManager;
-+			double humidity = wm.getHumidity((int)this.mc.thePlayer.posX,(int)this.mc.thePlayer.posZ);
-+			renderDebugText(var8, "Weather: "+String.format("%.2f",humidity)+"% humidity", 2, 10, 14737632);
++			renderDebugText(var8, "Weather: "+wm.currentWeather.name+" (T: "+(wm.weatherDuration/20)+"s I: "+String.format("%.02f",wm.weatherIntensity*100)+"% P: "+String.format("%.02f",wm.weatherPower)+")", 2, 10, 14737632);
 +			renderDebugText(var8,"Wind: "+String.format("%.2f",wm.windAngle)+" degrees "+String.format("%.2f",wm.windSpeed)+"% Speed", 2,11, 14737632);
  			GL11.glPopMatrix();
 +		} else {
@@ -18026,7 +20985,7 @@
  		}
  
  		if(this.recordPlayingUpFor > 0) {
-@@ -332,10 +384,10 @@
+@@ -332,10 +386,10 @@
  		GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
  		GL11.glColor4f(1.0F, 1.0F, 1.0F, var1);
  		GL11.glBindTexture(GL11.GL_TEXTURE_2D, this.mc.textureRegistry.getTexture("/terrain.png"));
@@ -18041,7 +21000,7 @@
  		Tessellator var8 = Tessellator.instance;
  		var8.startDrawingQuads();
  		var8.addVertexWithUV(0.0D, (double)var3, -90.0D, (double)var4, (double)var7);
-@@ -377,6 +429,22 @@
+@@ -377,6 +431,22 @@
  
  		++this.updateCounter;
  
@@ -18064,7 +21023,7 @@
  		for(int var1 = 0; var1 < this.chatMessageList.size(); ++var1) {
  			++((ChatLine)this.chatMessageList.get(var1)).updateCounter;
  		}
-@@ -415,5 +483,12 @@
+@@ -415,5 +485,12 @@
  		StringTranslate var2 = StringTranslate.getInstance();
  		String var3 = var2.translateKey(var1);
  		this.addChatMessage(var3);
